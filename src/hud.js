@@ -4,7 +4,7 @@ const PLACEHOLDER = "—";
 
 function formatUnit(value, unit, digits = 1) {
   if (!Number.isFinite(value)) return PLACEHOLDER;
-  const number = unit === "km/s" && value > 0 && value < 0.01 ? value.toPrecision(4) : value.toFixed(digits);
+  const number = value !== 0 && Math.abs(value) < 10 ** -digits ? value.toPrecision(4) : value.toFixed(digits);
   return `${number} ${unit}`;
 }
 
