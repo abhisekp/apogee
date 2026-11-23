@@ -1,6 +1,5 @@
-// Scaled world units, not SI: GM below is the gravitational strength the
-// simulation actually integrates with, chosen so the numbers stay friendly
-// for a canvas at typical screen sizes rather than modeling real meters/kg.
+// Model distances are in kilometers and times are in seconds.
+// GM is the simulated body's gravitational parameter in km³/s².
 export const DEFAULT_GM = 4000;
 
 // Clamping r2 away from exactly zero keeps the inverse-square factor finite

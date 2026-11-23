@@ -10,8 +10,8 @@ describe("buildHudReadout", () => {
     const r = 300;
     const v = circularOrbitVelocity(r);
     const readout = buildHudReadout({ x: r, y: 0, vx: 0, vy: v }, DEFAULT_GM, PLANET_RADIUS);
-    expect(readout.velocity).toBe(`${v.toFixed(2)} u/s`);
-    expect(readout.altitude).toBe(`${(r - PLANET_RADIUS).toFixed(1)} u`);
+    expect(readout.velocity).toBe(`${v.toFixed(2)} km/s`);
+    expect(readout.altitude).toBe(`${(r - PLANET_RADIUS).toFixed(1)} km`);
   });
 
   it("reports apoapsis/periapsis/period for a bound orbit", () => {
@@ -28,12 +28,12 @@ describe("buildHudReadout", () => {
     for (const value of Object.values(readout)) {
       expect(value).not.toMatch(/NaN|undefined/);
     }
-    expect(readout.velocity).toBe("0.00 u/s");
+    expect(readout.velocity).toBe("0.00 km/s");
   });
 
   it("shows placeholders instead of NaN immediately after a crash (r=0)", () => {
     const readout = buildHudReadout({ x: 0, y: 0, vx: 0, vy: 0 }, DEFAULT_GM, PLANET_RADIUS);
-    expect(readout.velocity).toBe("0.00 u/s");
+    expect(readout.velocity).toBe("0.00 km/s");
     expect(readout.altitude).not.toMatch(/NaN/);
   });
 

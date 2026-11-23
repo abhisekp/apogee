@@ -57,7 +57,7 @@
 
     <div class="controls">
       <div class="control gravity-control">
-        <wa-slider label="Gravity (GM)" id="gravity-slider" min="1500" max="7000" step="100" value="4000"></wa-slider>
+        <wa-slider label="GM (km³/s²)" id="gravity-slider" min="1500" max="7000" step="100" value="4000"></wa-slider>
         <span class="control-value" id="gravity-value">4000</span>
       </div>
       <wa-select label="Playback speed" id="playback-speed" size="small" value="3">
@@ -71,7 +71,7 @@
         <wa-button type="button" size="small" id="fit-path" aria-pressed="false">Fit path</wa-button>
       </div>
       <form class="aim-controls" id="aim-controls">
-        <wa-number-input label="Launch speed (u/s)" id="aim-speed" size="small" min="0" max="19.8" step="0.01" required value="8.16"></wa-number-input>
+        <wa-number-input label="Launch speed (km/s)" id="aim-speed" size="small" min="0" max="19.8" step="0.01" required value="8.16"></wa-number-input>
         <wa-number-input label="Launch angle (°)" id="aim-angle" size="small" min="-180" max="180" step="0.1" required value="90"></wa-number-input>
         <wa-button type="submit" size="small" variant="brand" id="launch-button">Launch</wa-button>
         <p class="aim-help">0° points away from the planet. +90° is tangential, toward the top. Cyan dashes show the predicted path. Drag the satellite to aim, drag empty space to pan, and scroll over the canvas to zoom.</p>

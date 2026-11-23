@@ -23,10 +23,10 @@ export function buildHudReadout(state, gm, planetRadius) {
   const elements = orbitalElements(state, gm);
 
   return {
-    velocity: formatUnit(speed, "u/s", 2),
-    altitude: formatUnit(altitude, "u", 1),
-    apoapsis: elements ? formatUnit(elements.apoapsis, "u", 1) : PLACEHOLDER,
-    periapsis: elements ? formatUnit(elements.periapsis, "u", 1) : PLACEHOLDER,
+    velocity: formatUnit(speed, "km/s", 2),
+    altitude: formatUnit(altitude, "km", 1),
+    apoapsis: elements ? formatUnit(elements.apoapsis, "km", 1) : PLACEHOLDER,
+    periapsis: elements ? formatUnit(elements.periapsis, "km", 1) : PLACEHOLDER,
     period: elements ? formatUnit(elements.period, "s", 2) : PLACEHOLDER,
   };
 }

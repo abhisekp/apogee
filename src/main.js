@@ -258,17 +258,17 @@ function showOverlay(kind) {
   outcomeTitle.textContent = kind === "crash" ? "CRASH" : kind === "orbit" ? "ORBIT LOCKED" : "ESCAPED";
   outcomeTitle.dataset.outcome = kind;
 
-  const stats = [["launch velocity", `${launchSpeed.toFixed(2)} u/s`]];
+  const stats = [["launch velocity", `${launchSpeed.toFixed(2)} km/s`]];
   if (kind === "orbit" && satellite) {
     const elements = orbitalElements(satellite, gm);
     if (elements) {
-      stats.push(["apoapsis", `${elements.apoapsis.toFixed(1)} u`]);
-      stats.push(["periapsis", `${elements.periapsis.toFixed(1)} u`]);
+      stats.push(["apoapsis", `${elements.apoapsis.toFixed(1)} km`]);
+      stats.push(["periapsis", `${elements.periapsis.toFixed(1)} km`]);
       stats.push(["period", `${elements.period.toFixed(2)} s`]);
     }
   } else if (satellite) {
     const altitude = Math.hypot(satellite.x, satellite.y) - PLANET_RADIUS;
-    stats.push(["altitude", `${altitude.toFixed(1)} u`]);
+    stats.push(["altitude", `${altitude.toFixed(1)} km`]);
   }
 
   outcomeStats.innerHTML = stats.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join("");
