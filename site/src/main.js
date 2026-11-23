@@ -1,4 +1,5 @@
 import { DEFAULT_GM, stepSimulation, classifyOutcome, orbitalElements } from "./physics.js";
+import { aimedVelocity, projectTrajectory, SIM_DT } from "./projection.js";
 import { dragDistance, clampToMaxDistance, launchVelocity } from "./input.js";
 import { buildHudReadout } from "./hud.js";
 import { createDebrisBurst, updateParticles, particleOpacity } from "./particles.js";
@@ -15,11 +16,7 @@ const LAUNCH_RADIUS = 60;
 const ESCAPE_RADIUS = 500;
 const MAX_DRAG_DISTANCE = 220;
 const DRAG_SENSITIVITY = 0.09;
-const SIM_DT = 1 / 120;
 const MAX_FRAME_DT = 0.05;
-// Simulated seconds per real second — keeps orbit-lock (2 full periods) and
-// escape resolution feeling snappy without touching the physics itself.
-const TIME_SCALE = 3;
 const MAX_TRACE_POINTS = 4000;
 const DRAG_SOUND_THROTTLE_MS = 90;
 
@@ -36,6 +33,16 @@ const gravitySlider = document.getElementById("gravity-slider");
 const gravityValue = document.getElementById("gravity-value");
 const muteButton = document.getElementById("mute-toggle");
 const resetButton = document.getElementById("reset-button");
+
+const playback = document.getElementById("playback-speed");
+const zoomSlider = document.getElementById("zoom");
+const zoomValue = document.getElementById("zoom-value");
+const fitButton = document.getElementById("fit-path");
+const aimForm = document.getElementById("aim-controls");
+const aimSpeed = document.getElementById("aim-speed");
+const aimAngle = document.getElementById("aim-angle");
+const launchButton = document.getElementById("launch-button");
+const predictionStatus = document.getElementById("prediction-status");
 
 const hudFields = {
   velocity: document.getElementById("hud-velocity"),
@@ -63,8 +70,13 @@ let particles = [];
 let outcome = null; // crash | orbit | escape
 let launchSpeed = 0;
 let orbitHoldTime = 0;
-let orbitLocked = false;
-let dragPointer = null; // current pointer position in CSS px, canvas-local
+let dragPointer = null;
+let dragOrigin = null;
+let projection = null;
+let zoom = 1;
+let fitPath = false;
+let physicsTime = 0;
+let traceStep = 0;
 let lastFrameTime = null;
 let lastDragSoundTime = 0;
 let shakeTimeoutId = null;
@@ -90,15 +102,51 @@ function center() {
   return { cx: rect.width / 2, cy: rect.height / 2, width: rect.width, height: rect.height };
 }
 
-function toCanvasLocal(clientX, clientY) {
-  const rect = canvas.getBoundingClientRect();
-  const { cx, cy } = center();
-  return { x: clientX - rect.left - cx, y: clientY - rect.top - cy };
+function currentAim() {
+  if (!aimSpeed.validity.valid || !aimAngle.validity.valid) return null;
+  return aimedVelocity(aimSpeed.valueAsNumber, aimAngle.valueAsNumber);
+}
+
+function updatePrediction(velocity = currentAim()) {
+  projection = velocity
+    ? projectTrajectory({ ...anchorPoint(), ...velocity }, gm, PLANET_RADIUS, ESCAPE_RADIUS)
+    : null;
+  const labels = {
+    crash: "Predicted impact",
+    orbit: "Predicted orbit",
+    escape: "Predicted escape",
+    partial: "Preview limited to 120 simulated seconds",
+  };
+  predictionStatus.textContent = projection ? labels[projection.outcome] : "";
+}
+
+function setFitPath(enabled) {
+  fitPath = enabled;
+  fitButton.setAttribute("aria-pressed", String(enabled));
+}
+
+function viewScale(width, height) {
+  if (!fitPath) return zoom;
+  let x = PLANET_RADIUS;
+  let y = PLANET_RADIUS;
+  for (const points of [projection?.points ?? [], trace]) {
+    for (const point of points) {
+      x = Math.max(x, Math.abs(point.x));
+      y = Math.max(y, Math.abs(point.y));
+    }
+  }
+  if (satellite) {
+    x = Math.max(x, Math.abs(satellite.x));
+    y = Math.max(y, Math.abs(satellite.y));
+  }
+  return Math.min(2.5, width * 0.44 / x, height * 0.44 / y);
 }
 
 function setPhase(next) {
   phase = next;
-  gravitySlider.disabled = phase === "flying" || phase === "resolved";
+  const inRun = phase === "flying" || phase === "resolved";
+  gravitySlider.disabled = inRun;
+  aimSpeed.disabled = aimAngle.disabled = launchButton.disabled = inRun;
 }
 
 function resetScene() {
@@ -108,26 +156,35 @@ function resetScene() {
   outcome = null;
   launchSpeed = 0;
   orbitHoldTime = 0;
-  orbitLocked = false;
   dragPointer = null;
   overlay.hidden = true;
   hudStatus.textContent = "";
   delete hudStatus.dataset.outcome;
   setPhase("idle");
+  updatePrediction();
   render();
 }
 
 function beginDrag(clientX, clientY) {
   if (phase !== "idle") return;
   setPhase("dragging");
-  dragPointer = toCanvasLocal(clientX, clientY);
+  dragOrigin = { x: clientX, y: clientY };
+  dragPointer = anchorPoint();
+  updatePrediction();
   lastDragSoundTime = 0;
 }
 
 function updateDrag(clientX, clientY) {
   if (phase !== "dragging") return;
-  const local = toCanvasLocal(clientX, clientY);
-  dragPointer = clampToMaxDistance(anchorPoint(), local, MAX_DRAG_DISTANCE);
+  const anchor = anchorPoint();
+  dragPointer = clampToMaxDistance(anchor, {
+    x: anchor.x + clientX - dragOrigin.x,
+    y: anchor.y + clientY - dragOrigin.y,
+  }, MAX_DRAG_DISTANCE);
+  const velocity = launchVelocity(anchor, dragPointer, DRAG_SENSITIVITY);
+  aimSpeed.value = Math.min(19.8, Math.hypot(velocity.vx, velocity.vy)).toFixed(2);
+  aimAngle.value = (Math.atan2(-velocity.vy, velocity.vx) * 180 / Math.PI).toFixed(1);
+  updatePrediction(velocity);
 
   const now = performance.now();
   if (now - lastDragSoundTime > DRAG_SOUND_THROTTLE_MS) {
@@ -139,16 +196,17 @@ function updateDrag(clientX, clientY) {
 
 function endDrag() {
   if (phase !== "dragging") return;
-  const velocity = launchVelocity(anchorPoint(), dragPointer, DRAG_SENSITIVITY);
-  launchSatellite(velocity);
+  launchSatellite(launchVelocity(anchorPoint(), dragPointer, DRAG_SENSITIVITY));
 }
 
 function launchSatellite(velocity) {
-  satellite = { x: LAUNCH_RADIUS, y: 0, vx: velocity.vx, vy: velocity.vy };
+  updatePrediction(velocity);
+  satellite = { ...anchorPoint(), ...velocity };
+  physicsTime = 0;
+  traceStep = 0;
   launchSpeed = Math.hypot(velocity.vx, velocity.vy);
   trace = [{ x: satellite.x, y: satellite.y }];
   orbitHoldTime = 0;
-  orbitLocked = false;
   dragPointer = null;
   audio.playLaunch();
   setPhase("flying");
@@ -171,6 +229,7 @@ function triggerShake() {
 
 function resolveOutcome(kind) {
   outcome = kind;
+  pushTracePoint(satellite.x, satellite.y);
   setPhase("resolved");
 
   hudStatus.dataset.outcome = kind;
@@ -213,12 +272,11 @@ function showOverlay(kind) {
 }
 
 function stepPhysics(dt) {
-  let remaining = dt;
-  while (remaining > 0 && phase === "flying") {
-    const step = Math.min(SIM_DT, remaining);
-    satellite = stepSimulation(satellite, step, gm);
-    remaining -= step;
-    pushTracePoint(satellite.x, satellite.y);
+  physicsTime += dt;
+  while (physicsTime >= SIM_DT && phase === "flying") {
+    satellite = stepSimulation(satellite, SIM_DT, gm);
+    physicsTime -= SIM_DT;
+    if (++traceStep % 8 === 0) pushTracePoint(satellite.x, satellite.y);
 
     const classification = classifyOutcome(satellite, PLANET_RADIUS, ESCAPE_RADIUS, gm);
     if (classification === "crash" || classification === "escape") {
@@ -227,10 +285,9 @@ function stepPhysics(dt) {
     }
 
     if (classification === "orbit") {
-      orbitHoldTime += step;
+      orbitHoldTime += SIM_DT;
       const elements = orbitalElements(satellite, gm);
       if (elements && orbitHoldTime >= elements.period * 2) {
-        orbitLocked = true;
         resolveOutcome("orbit");
         return;
       }
@@ -317,27 +374,26 @@ function drawTrace(cx, cy) {
   ctx.restore();
 }
 
-function drawOrbitLockRing(cx, cy) {
-  if (!orbitLocked || !satellite) return;
-  const elements = orbitalElements(satellite, gm);
-  if (!elements) return;
-  const pulse = reducedMotion ? 0.6 : 0.5 + 0.4 * Math.sin(performance.now() / 220);
+function drawPrediction(cx, cy, scale) {
+  if (!projection) return;
   ctx.save();
-  ctx.strokeStyle = `rgba(94, 235, 176, ${pulse})`;
-  ctx.lineWidth = 2;
-  ctx.shadowColor = "rgba(94, 235, 176, 0.6)";
-  ctx.shadowBlur = 12;
+  ctx.strokeStyle = "rgba(77, 216, 232, 0.8)";
+  ctx.lineWidth = 2 / scale;
+  ctx.setLineDash([5 / scale, 5 / scale]);
   ctx.beginPath();
-  ctx.ellipse(cx, cy, elements.apoapsis, elements.apoapsis * 0.94, 0, 0, Math.PI * 2);
+  projection.points.forEach((point, index) => {
+    if (index === 0) ctx.moveTo(cx + point.x, cy + point.y);
+    else ctx.lineTo(cx + point.x, cy + point.y);
+  });
   ctx.stroke();
   ctx.restore();
 }
 
-function drawSatellite(cx, cy) {
+function drawSatellite(cx, cy, scale) {
   if (!satellite) return;
   ctx.fillStyle = "#ff6b4a";
   ctx.beginPath();
-  ctx.arc(cx + satellite.x, cy + satellite.y, 6, 0, Math.PI * 2);
+  ctx.arc(cx + satellite.x, cy + satellite.y, 6 / scale, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -377,13 +433,19 @@ function render() {
   const { cx, cy, width, height } = center();
   ctx.clearRect(0, 0, width, height);
   drawGrid(width, height);
-  drawTrace(cx, cy);
-  drawOrbitLockRing(cx, cy);
-  drawPlanet(cx, cy);
-  drawLaunchPad(cx, cy);
-  drawParticles(cx, cy);
-  drawDragIndicator(cx, cy);
-  drawSatellite(cx, cy);
+  const scale = viewScale(width, height);
+  zoomValue.textContent = `${Math.round(scale * 100)}%`;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  drawTrace(0, 0);
+  drawPlanet(0, 0);
+  drawLaunchPad(0, 0);
+  drawPrediction(0, 0, scale);
+  drawParticles(0, 0);
+  drawDragIndicator(0, 0);
+  drawSatellite(0, 0, scale);
+  ctx.restore();
   updateHud();
 }
 
@@ -391,7 +453,7 @@ function frame(timestamp) {
   if (lastFrameTime === null) lastFrameTime = timestamp;
   const rawDt = Math.min(MAX_FRAME_DT, (timestamp - lastFrameTime) / 1000);
   lastFrameTime = timestamp;
-  const dt = rawDt * TIME_SCALE;
+  const dt = rawDt * Number(playback.value);
 
   if (phase === "flying") {
     stepPhysics(dt);
@@ -436,12 +498,36 @@ function wireControls() {
     { passive: false }
   );
   window.addEventListener("touchend", endDrag);
-  window.addEventListener("touchcancel", endDrag);
+  window.addEventListener("touchcancel", () => {
+    if (phase === "dragging") resetScene();
+  });
+
+  aimForm.addEventListener("input", () => {
+    if (phase === "idle") updatePrediction();
+  });
+  aimForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const velocity = currentAim();
+    if (phase === "idle" && velocity) launchSatellite(velocity);
+  });
+  zoomSlider.addEventListener("input", () => {
+    zoom = Number(zoomSlider.value) / 100;
+    setFitPath(false);
+  });
+  fitButton.addEventListener("click", () => {
+    overlay.hidden = true;
+    setFitPath(!fitPath);
+  });
+  document.getElementById("view-path").addEventListener("click", () => {
+    overlay.hidden = true;
+    setFitPath(true);
+    resetButton.focus();
+  });
 
   gravitySlider.addEventListener("input", () => {
     gm = Number(gravitySlider.value);
     gravityValue.textContent = gravitySlider.value;
-    if (phase === "idle") render();
+    if (phase === "idle") updatePrediction();
   });
 
   muteButton.addEventListener("click", () => {

@@ -106,6 +106,7 @@
         <div class="outcome-card">
           <p class="outcome-title" id="outcome-title">CRASH</p>
           <dl class="outcome-stats" id="outcome-stats"></dl>
+          <button type="button" class="btn" id="view-path">View path</button>
           <button type="button" class="btn btn-primary" id="launch-another">Launch Another</button>
         </div>
       </div>
@@ -129,6 +130,32 @@
         <input type="range" id="gravity-slider" min="1500" max="7000" step="100" value="4000" />
         <span class="control-value" id="gravity-value">4000</span>
       </label>
+      <label class="control">Playback speed
+        <select id="playback-speed" class="btn">
+          <option value="1">1×</option><option value="3" selected>3×</option>
+          <option value="6">6×</option><option value="12">12×</option><option value="24">24×</option>
+        </select>
+      </label>
+      <div class="control view-controls">
+        <label class="control">Zoom
+          <input type="range" id="zoom" min="10" max="250" step="1" value="100" />
+        </label>
+        <output id="zoom-value" for="zoom">100%</output>
+        <button type="button" class="btn" id="fit-path" aria-pressed="false">Fit path</button>
+      </div>
+      <form class="aim-controls" id="aim-controls">
+        <label class="control">Launch speed
+          <input type="number" id="aim-speed" min="0" max="19.8" step="any" required value="8.16" />
+          u/s
+        </label>
+        <label class="control">Launch angle
+          <input type="number" id="aim-angle" min="-180" max="180" step="any" required value="90" />
+          °
+        </label>
+        <button type="submit" class="btn btn-primary" id="launch-button">Launch</button>
+        <p class="aim-help">0° points away from the planet. +90° is tangential, toward the top. Cyan dashes show the predicted path.</p>
+        <p class="aim-help" id="prediction-status"></p>
+      </form>
       <div class="control-buttons">
         <button type="button" class="btn btn-icon" id="mute-toggle" aria-label="Mute sound" aria-pressed="false"></button>
         <button type="button" class="btn" id="reset-button">Reset</button>

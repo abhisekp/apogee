@@ -466,3 +466,37 @@ input[type="range"]:disabled {
     transition-duration: 0.001ms !important;
   }
 }
+
+.aim-controls {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.aim-controls input {
+  width: 7ch;
+  padding: 4px;
+  color: inherit;
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+.aim-help {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.view-controls {
+  flex-wrap: wrap;
+}
+
+#fit-path[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
