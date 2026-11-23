@@ -1,4 +1,5 @@
-import { DEFAULT_GM, stepSimulation, classifyOutcome, orbitalElements } from "./physics.js";
+import { stepSimulation, classifyOutcome, orbitalElements, circularOrbitVelocity, escapeVelocity } from "./physics.js";
+import { bodies, transferDefaults, TRANSFER_STEP, moonPosition, stepTransfer, transferOutcome, projectTransfer } from "./bodies.js";
 import { aimedVelocity, projectTrajectory, SIM_DT } from "./projection.js";
 import { dragDistance, clampToMaxDistance, launchVelocity } from "./input.js";
 import { buildHudReadout } from "./hud.js";
@@ -6,14 +7,6 @@ import { createDebrisBurst, updateParticles, particleOpacity } from "./particles
 import { createAudioEngine } from "./audio.js";
 import { getOrbitCount, incrementOrbitCount } from "./stats.js";
 
-const PLANET_RADIUS = 40;
-// The satellite launches from a small standoff above the surface, not the
-// surface itself: a tangential orbit starting exactly at PLANET_RADIUS has
-// periapsis <= PLANET_RADIUS by construction (see classifyOutcome), which
-// makes a genuine "orbit" classification unreachable. The standoff gives a
-// real periapsis clearance margin.
-const LAUNCH_RADIUS = 60;
-const ESCAPE_RADIUS = 500;
 const MAX_DRAG_DISTANCE = 220;
 const DRAG_SENSITIVITY = 0.09;
 const MAX_FRAME_DT = 0.05;
@@ -42,9 +35,9 @@ const presetSelect = document.getElementById("launch-preset");
 const presetDescription = document.getElementById("preset-description");
 const defaultPresetDescription = presetDescription.textContent;
 const presets = {
-  sputnik: { gm: 4000, speed: 8.36, angle: 90, description: "Inspired by Sputnik 1’s elliptical Earth orbit in 1957." },
-  luna: { gm: 4000, speed: 3.5, angle: 145, description: "Inspired by Luna 2’s 1959 lunar impact. The central body represents the Moon." },
-  apollo: { gm: 4000, speed: 12.1, angle: 80, description: "Inspired by Apollo 8 leaving Earth orbit in 1968. The preview ends at the departure boundary." },
+  sputnik: { profile: "earth", altitude: 215, speed: 8, angle: 90, description: "Inspired by Sputnik 1’s elliptical Earth orbit in 1957." },
+  luna: { profile: "moon", altitude: 100, speed: 2.5, angle: 145, description: "Inspired by Luna 2’s 1959 lunar impact. The central body represents the Moon." },
+  apollo: { profile: "earth", altitude: 185, speed: 11.05, angle: 90, description: "Inspired by Apollo 8 leaving Earth orbit in 1968. The preview ends at the departure boundary." },
   circle: { gm: 4000, speed: 8.16, angle: 90, description: "A tangential launch tuned to stay nearly the same distance from the center." },
   ellipse: { gm: 4000, speed: 10.65, angle: 90, description: "A fast tangential launch creates a wide ellipse with a distant apoapsis." },
   reverse: { gm: 4000, speed: 8.16, angle: -90, description: "The nearly circular setup with its launch direction reversed." },
@@ -75,7 +68,53 @@ const audio = createAudioEngine();
 const reducedMotion =
   typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-let gm = DEFAULT_GM;
+const controls = Object.fromEntries([
+  "body-profile", "body-radius", "body-gm", "launch-altitude", "body-note",
+  "speed-guide", "path-guide", "pause-flight", "step-flight", "replay-flight",
+  "pin-path", "clear-path", "comparison-info",
+  "transfer-fields", "moon-radius", "moon-gm", "moon-distance", "moon-phase",
+].map(id => [id, document.getElementById(id)]));
+const profiles = Object.fromEntries(Object.entries(bodies).map(([id, config]) => [id, { ...config }]));
+const transfer = { ...transferDefaults, earth: { ...transferDefaults.earth }, moon: { ...transferDefaults.moon } };
+let profileId = "sandbox";
+let body = profiles.sandbox;
+let gm = body.gm;
+let paused = false;
+let lastVelocity = null;
+let comparison = null;
+
+const isTransfer = () => profileId === "transfer";
+const launchRadius = () => body.radius + body.altitude;
+const escapeRadius = () => Math.max(body.radius * 8, launchRadius() * 4, 0.001);
+const baselineScale = () => 40 / body.radius;
+const physicsStep = () => isTransfer() ? TRANSFER_STEP : profileId === "sandbox" ? SIM_DT :
+  Math.sqrt(body.radius ** 3 / gm) / 300;
+const speedText = value => value > 0 && value < 0.01 ? value.toPrecision(4) : value.toFixed(2);
+
+function compatibleComparison() {
+  return comparison && comparison.profile === profileId && comparison.radius === body.radius;
+}
+
+function pathSummary(path, parameter, altitude) {
+  const { vx, vy } = path.initial;
+  return `${speedText(Math.hypot(vx, vy))} km/s at ${path.angle.toFixed(1)}° · ${path.outcome} · GM ${parameter} · Launch altitude ${altitude} km`;
+}
+
+function refreshGuides() {
+  const speed = circularOrbitVelocity(launchRadius(), gm);
+  controls["speed-guide"].textContent = `${isTransfer() ? "Earth-only reference · " : ""}Circular speed ${speedText(speed)} km/s at 90° · Escape speed ${speedText(escapeVelocity(launchRadius(), gm))} km/s`;
+  const altitude = point => Math.max(0, Math.hypot(point.x, point.y) - body.radius).toLocaleString(undefined, { maximumFractionDigits: 3 });
+  controls["path-guide"].textContent = projection
+    ? `Path A · Closest ${altitude(projection.near)} km · Farthest shown ${altitude(projection.far)} km above the surface` +
+      (isTransfer() ? ` · Closest lunar altitude ${Math.round(projection.closestMoon).toLocaleString()} km` : "")
+    : "";
+  controls["pin-path"].disabled = !projection;
+  controls["clear-path"].disabled = !comparison;
+  controls["comparison-info"].textContent = comparison
+    ? (projection ? "A (cyan) · " + pathSummary(projection, gm, body.altitude) + " | " : "") +
+      "B (gold) · " + comparison.summary + (compatibleComparison() ? "" : " · Select the same body and radius to overlay path B.")
+    : "";
+}
 let phase = "idle"; // idle | dragging | flying | resolved
 let satellite = null; // { x, y, vx, vy }
 let trace = [];
@@ -100,11 +139,11 @@ let lastDragSoundTime = 0;
 let shakeTimeoutId = null;
 
 function anchorPoint() {
-  return { x: LAUNCH_RADIUS, y: 0 };
+  return { x: launchRadius(), y: 0 };
 }
 
 function restingSatellite() {
-  return { x: LAUNCH_RADIUS, y: 0, vx: 0, vy: 0 };
+  return { ...anchorPoint(), vx: 0, vy: 0, time: 0 };
 }
 
 function resize() {
@@ -126,16 +165,30 @@ function currentAim() {
 }
 
 function updatePrediction(velocity = currentAim()) {
-  projection = velocity
-    ? projectTrajectory({ ...anchorPoint(), ...velocity }, gm, PLANET_RADIUS, ESCAPE_RADIUS)
-    : null;
+  const initial = velocity ? { ...anchorPoint(), ...velocity, time: 0 } : null;
+  projection = initial && (isTransfer()
+    ? projectTransfer(initial, transfer)
+    : projectTrajectory(initial, gm, body.radius, profileId === "sandbox" ? Math.max(500, escapeRadius()) : escapeRadius(), physicsStep()));
+  if (projection) {
+    projection.initial = initial;
+    projection.angle = Math.atan2(-initial.vy, initial.vx) * 180 / Math.PI;
+    projection.near = projection.far = initial;
+    for (const point of projection.points) {
+      const radius = Math.hypot(point.x, point.y);
+      if (radius < Math.hypot(projection.near.x, projection.near.y)) projection.near = point;
+      if (radius > Math.hypot(projection.far.x, projection.far.y)) projection.far = point;
+    }
+  }
   const labels = {
     crash: "Predicted impact",
     orbit: "Predicted orbit",
     escape: "Predicted escape",
     partial: "Escape preview ended before reaching the boundary",
+    "moon-impact": "Predicted lunar impact",
+    "transfer-end": "Predicted transfer path · 8 days",
   };
   predictionStatus.textContent = projection ? labels[projection.outcome] : "";
+  refreshGuides();
 }
 
 function setFitPath(enabled) {
@@ -149,9 +202,9 @@ function setFitPath(enabled) {
 
 function viewScale(width, height) {
   if (!fitPath) return zoom;
-  let x = PLANET_RADIUS;
-  let y = PLANET_RADIUS;
-  for (const points of [projection?.points ?? [], trace]) {
+  let x = isTransfer() ? transfer.distance : body.radius;
+  let y = x;
+  for (const points of [projection?.points ?? [], trace, compatibleComparison() ? comparison.path.points : []]) {
     for (const point of points) {
       x = Math.max(x, Math.abs(point.x));
       y = Math.max(y, Math.abs(point.y));
@@ -161,17 +214,23 @@ function viewScale(width, height) {
     x = Math.max(x, Math.abs(satellite.x));
     y = Math.max(y, Math.abs(satellite.y));
   }
-  return Math.min(2.5, width * 0.44 / x, height * 0.44 / y);
+  return Math.min(2.5 * baselineScale(), width * 0.44 / x, height * 0.44 / y);
 }
 
 function setPhase(next) {
   phase = next;
   const inRun = phase === "flying" || phase === "resolved";
-  gravitySlider.disabled = inRun;
+  gravitySlider.disabled = inRun || profileId !== "sandbox";
+  for (const id of ["body-radius", "body-gm", "launch-altitude", "moon-radius", "moon-gm", "moon-distance", "moon-phase"]) controls[id].disabled = inRun;
+  controls["pause-flight"].disabled = phase !== "flying";
+  controls["step-flight"].disabled = phase !== "flying" || !paused;
+  controls["replay-flight"].disabled = !lastVelocity;
   aimSpeed.disabled = aimAngle.disabled = launchButton.disabled = inRun;
 }
 
 function resetScene() {
+  paused = false;
+  controls["pause-flight"].textContent = "Pause";
   satellite = restingSatellite();
   trace = [];
   particles = [];
@@ -204,8 +263,9 @@ function updateDrag(clientX, clientY) {
     x: anchor.x + clientX - dragOrigin.x,
     y: anchor.y + clientY - dragOrigin.y,
   }, MAX_DRAG_DISTANCE);
-  const velocity = launchVelocity(anchor, dragPointer, DRAG_SENSITIVITY);
-  aimSpeed.value = Number(Math.min(19.8, Math.hypot(velocity.vx, velocity.vy)).toFixed(2));
+  const velocity = dragVelocity();
+  const precision = Number(aimSpeed.step) < 0.01 ? 10 : 2;
+  aimSpeed.value = Number(Math.hypot(velocity.vx, velocity.vy).toFixed(precision));
   aimAngle.value = Number((Math.atan2(-velocity.vy, velocity.vx) * 180 / Math.PI).toFixed(1));
   updatePrediction(velocity);
 
@@ -217,14 +277,22 @@ function updateDrag(clientX, clientY) {
   }
 }
 
+function dragVelocity() {
+  const sensitivity = profileId === "sandbox" ? DRAG_SENSITIVITY : Number(aimSpeed.max) / MAX_DRAG_DISTANCE;
+  return launchVelocity(anchorPoint(), dragPointer, sensitivity);
+}
+
 function endDrag() {
   if (phase !== "dragging") return;
-  launchSatellite(launchVelocity(anchorPoint(), dragPointer, DRAG_SENSITIVITY));
+  launchSatellite(dragVelocity());
 }
 
 function launchSatellite(velocity) {
   updatePrediction(velocity);
-  satellite = { ...anchorPoint(), ...velocity };
+  satellite = { ...anchorPoint(), ...velocity, time: 0 };
+  lastVelocity = velocity;
+  paused = false;
+  controls["pause-flight"].textContent = "Pause";
   physicsTime = 0;
   traceStep = 0;
   launchSpeed = Math.hypot(velocity.vx, velocity.vy);
@@ -270,14 +338,16 @@ function resolveOutcome(kind) {
     hudStatus.textContent = "ESCAPED";
   }
 
+  if (kind === "moon-impact") hudStatus.textContent = "LUNAR IMPACT";
+  if (kind === "transfer-end") hudStatus.textContent = "TRANSFER COMPLETE";
   showOverlay(kind);
 }
 
 function showOverlay(kind) {
-  outcomeTitle.textContent = kind === "crash" ? "CRASH" : kind === "orbit" ? "ORBIT LOCKED" : "ESCAPED";
+  outcomeTitle.textContent = hudStatus.textContent;
   outcomeTitle.dataset.outcome = kind;
 
-  const stats = [["launch velocity", `${launchSpeed.toFixed(2)} km/s`]];
+  const stats = [["launch velocity", `${speedText(launchSpeed)} km/s`]];
   if (kind === "orbit" && satellite) {
     const elements = orbitalElements(satellite, gm);
     if (elements) {
@@ -285,8 +355,10 @@ function showOverlay(kind) {
       stats.push(["periapsis", `${elements.periapsis.toFixed(1)} km`]);
       stats.push(["period", `${elements.period.toFixed(2)} s`]);
     }
+  } else if (isTransfer()) {
+    stats.push(["Elapsed time", `${(satellite.time / 86400).toFixed(2)} days`]);
   } else if (satellite) {
-    const altitude = Math.hypot(satellite.x, satellite.y) - PLANET_RADIUS;
+    const altitude = Math.hypot(satellite.x, satellite.y) - body.radius;
     stats.push(["altitude", `${altitude.toFixed(1)} km`]);
   }
 
@@ -295,20 +367,25 @@ function showOverlay(kind) {
 }
 
 function stepPhysics(dt) {
-  physicsTime += dt;
-  while (physicsTime >= SIM_DT && phase === "flying") {
-    satellite = stepSimulation(satellite, SIM_DT, gm);
-    physicsTime -= SIM_DT;
-    if (++traceStep % 8 === 0) pushTracePoint(satellite.x, satellite.y);
-
-    const classification = classifyOutcome(satellite, PLANET_RADIUS, ESCAPE_RADIUS, gm);
+  const step = physicsStep();
+  physicsTime = Math.min(physicsTime + dt, step * 1000);
+  while (physicsTime >= step && phase === "flying") {
+    satellite = isTransfer() ? stepTransfer(satellite, step, transfer) : stepSimulation(satellite, step, gm);
+    physicsTime -= step;
+    if (++traceStep % (isTransfer() ? 60 : 8) === 0) pushTracePoint(satellite.x, satellite.y);
+    if (isTransfer()) {
+      const result = transferOutcome(satellite, transfer);
+      if (result) resolveOutcome(result);
+      continue;
+    }
+    const classification = classifyOutcome(satellite, body.radius, profileId === "sandbox" ? Math.max(500, escapeRadius()) : escapeRadius(), gm);
     if (classification === "crash" || classification === "escape") {
       resolveOutcome(classification);
       return;
     }
 
     if (classification === "orbit") {
-      orbitHoldTime += SIM_DT;
+      orbitHoldTime += step;
       const elements = orbitalElements(satellite, gm);
       if (elements && orbitHoldTime >= elements.period * 2) {
         resolveOutcome("orbit");
@@ -321,12 +398,12 @@ function stepPhysics(dt) {
 }
 
 function updateHud() {
-  const readout = buildHudReadout(satellite, gm, PLANET_RADIUS);
+  const readout = buildHudReadout(satellite, gm, body.radius);
   hudFields.velocity.textContent = readout.velocity;
   hudFields.altitude.textContent = readout.altitude;
-  hudFields.apoapsis.textContent = readout.apoapsis;
-  hudFields.periapsis.textContent = readout.periapsis;
-  hudFields.period.textContent = readout.period;
+  hudFields.apoapsis.textContent = isTransfer() ? "—" : readout.apoapsis;
+  hudFields.periapsis.textContent = isTransfer() ? "—" : readout.periapsis;
+  hudFields.period.textContent = isTransfer() ? "—" : readout.period;
 }
 
 function drawGrid(width, height) {
@@ -356,36 +433,36 @@ function drawLaunchPad(cx, cy) {
   ctx.lineWidth = 1;
   ctx.setLineDash([2, 5]);
   ctx.beginPath();
-  ctx.arc(cx, cy, LAUNCH_RADIUS, 0, Math.PI * 2);
+  ctx.arc(cx, cy, launchRadius(), 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
 }
 
 function drawPlanet(cx, cy) {
-  const glow = ctx.createRadialGradient(cx, cy, PLANET_RADIUS * 0.4, cx, cy, PLANET_RADIUS * 2.2);
+  const glow = ctx.createRadialGradient(cx, cy, body.radius * 0.4, cx, cy, body.radius * 2.2);
   const rimColor = outcome === "crash" ? "255, 82, 82" : "77, 216, 232";
   glow.addColorStop(0, `rgba(${rimColor}, 0.35)`);
   glow.addColorStop(1, `rgba(${rimColor}, 0)`);
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(cx, cy, PLANET_RADIUS * 2.2, 0, Math.PI * 2);
+  ctx.arc(cx, cy, body.radius * 2.2, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = "#0f1f38";
   ctx.strokeStyle = outcome === "crash" ? "#ff5252" : "#4dd8e8";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(cx, cy, PLANET_RADIUS, 0, Math.PI * 2);
+  ctx.arc(cx, cy, body.radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 }
 
-function drawTrace(cx, cy) {
+function drawTrace(cx, cy, scale) {
   if (trace.length < 2) return;
   ctx.save();
   ctx.strokeStyle = outcome === "orbit" ? "rgba(94, 235, 176, 0.8)" : "rgba(255, 107, 74, 0.7)";
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 4]);
+  ctx.lineWidth = 1.5 / scale;
+  ctx.setLineDash([4 / scale, 4 / scale]);
   ctx.beginPath();
   trace.forEach((point, i) => {
     const x = cx + point.x;
@@ -397,19 +474,48 @@ function drawTrace(cx, cy) {
   ctx.restore();
 }
 
-function drawPrediction(cx, cy, scale) {
-  if (!projection) return;
+function drawPrediction(cx, cy, scale, path, color) {
+  if (!path) return;
   ctx.save();
-  ctx.strokeStyle = "rgba(77, 216, 232, 0.8)";
+  ctx.strokeStyle = color;
   ctx.lineWidth = 2 / scale;
   ctx.setLineDash([5 / scale, 5 / scale]);
   ctx.beginPath();
-  projection.points.forEach((point, index) => {
+  path.points.forEach((point, index) => {
     if (index === 0) ctx.moveTo(cx + point.x, cy + point.y);
     else ctx.lineTo(cx + point.x, cy + point.y);
   });
   ctx.stroke();
   ctx.restore();
+}
+
+function drawMarker(point, label, color, scale, offset = -7) {
+  ctx.fillStyle = color;
+  ctx.font = `${11 / scale}px monospace`;
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, 3 / scale, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.fillText(label, point.x + 7 / scale, point.y + offset / scale);
+}
+
+function drawOverlays(scale) {
+  if (projection) {
+    const impact = ["crash", "moon-impact"].includes(projection.outcome) ? projection.points.at(-1) : null;
+    if (projection.near !== impact) drawMarker(projection.near, "Closest", "#4dd8e8", scale, 14);
+    if (projection.far !== impact) drawMarker(projection.far, "Farthest", "#a2eaf3", scale);
+    if (impact) drawMarker(impact, "Impact", "#ff7968", scale);
+  }
+  if (isTransfer()) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(214,216,223,0.3)";
+    ctx.lineWidth = 1 / scale;
+    ctx.setLineDash([2 / scale, 6 / scale]);
+    ctx.beginPath();
+    ctx.arc(0, 0, transfer.distance, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.restore();
+    drawMarker(moonPosition(satellite?.time ?? 0, transfer), "Moon", "#d6d8df", scale);
+  }
 }
 
 function drawSatellite(cx, cy, scale) {
@@ -457,15 +563,17 @@ function render() {
   ctx.clearRect(0, 0, width, height);
   drawGrid(width, height);
   const scale = viewScale(width, height);
-  const readout = `${Math.round(scale * 100)}%`;
+  const readout = `${Math.round(scale / baselineScale() * 100)}%`;
   if (zoomValue.textContent !== readout) zoomValue.textContent = readout;
   ctx.save();
   ctx.translate(cx + cameraX, cy + cameraY);
   ctx.scale(scale, scale);
-  drawTrace(0, 0);
+  drawTrace(0, 0, scale);
   drawPlanet(0, 0);
   drawLaunchPad(0, 0);
-  drawPrediction(0, 0, scale);
+  if (compatibleComparison()) drawPrediction(0, 0, scale, comparison.path, "#f9c86e");
+  drawPrediction(0, 0, scale, projection, "#4dd8e8");
+  drawOverlays(scale);
   drawParticles(0, 0);
   drawDragIndicator(0, 0);
   drawSatellite(0, 0, scale);
@@ -479,7 +587,7 @@ function frame(timestamp) {
   lastFrameTime = timestamp;
   const dt = rawDt * (Number(playback.value) || 3);
 
-  if (phase === "flying") {
+  if (phase === "flying" && !paused) {
     stepPhysics(dt);
   }
   if (!reducedMotion && particles.length) {
@@ -498,7 +606,7 @@ function updateMuteButton() {
 function manualZoom(scale) {
   setFitPath(false);
   zoom = scale;
-  zoomSlider.value = Math.round(scale * 100);
+  zoomSlider.value = Math.round(scale / baselineScale() * 100);
 }
 
 function startGesture(event) {
@@ -509,7 +617,7 @@ function startGesture(event) {
   const y = event.clientY - rect.top - rect.height / 2;
   const hitRadius = event.pointerType === "touch" ? 28 : 20;
   const aiming = phase === "idle" &&
-    Math.hypot(x - cameraX - LAUNCH_RADIUS * scale, y - cameraY) <= hitRadius;
+    Math.hypot(x - cameraX - launchRadius() * scale, y - cameraY) <= hitRadius;
   pointerGesture = { id: event.pointerId, aiming, x: event.clientX, y: event.clientY };
   canvas.setPointerCapture(event.pointerId);
   canvas.dataset.gesture = aiming ? "aim" : "pan";
@@ -556,7 +664,7 @@ function wheelZoom(event) {
   const scale = viewScale(rect.width, rect.height);
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
   const delta = Math.max(-150, Math.min(150, event.deltaY * unit));
-  const next = Math.max(Math.min(MIN_ZOOM, scale), Math.min(MAX_ZOOM, scale * Math.exp(-delta * 0.002)));
+  const next = Math.max(Math.min(MIN_ZOOM * baselineScale(), scale), Math.min(MAX_ZOOM * baselineScale(), scale * Math.exp(-delta * 0.002)));
   const ratio = next / scale;
   const x = event.clientX - rect.left - rect.width / 2;
   const y = event.clientY - rect.top - rect.height / 2;
@@ -571,21 +679,119 @@ function clearPreset() {
   presetDescription.textContent = defaultPresetDescription;
 }
 
-function applyPreset() {
-  const preset = presets[presetSelect.value];
-  if (!preset) return;
-  gm = preset.gm;
-  gravitySlider.value = gm;
-  gravityValue.textContent = String(gm);
-  aimSpeed.value = preset.speed;
-  aimAngle.value = preset.angle;
-  presetDescription.textContent = preset.description;
+function updateSpeedRange() {
+  const escape = escapeVelocity(launchRadius(), gm);
+  aimSpeed.max = profileId === "sandbox" ? Math.max(19.8, Math.ceil(2 * escape * 100) / 100) : Number((2 * escape).toPrecision(9));
+  aimSpeed.step = escape < 0.1 ? 0.0000000001 : 0.01;
+}
+
+function syncPlayback() {
+  for (const option of playback.querySelectorAll("wa-option")) {
+    option.disabled = profileId === "sandbox" && Number(option.getAttribute("value")) > 24;
+  }
+}
+
+function loadProfile(id, override) {
+  if (!Object.hasOwn(profiles, id) && id !== "transfer") return;
+  profileId = id;
+  body = isTransfer() ? transfer.earth : override ? { ...bodies[id] } : profiles[id];
+  if (override?.altitude !== undefined) body.altitude = override.altitude;
+  if (override?.gm !== undefined) body.gm = override.gm;
+  gm = body.gm;
+  controls["body-profile"].value = id;
+  controls["transfer-fields"].hidden = !isTransfer();
+  controls["body-radius"].value = body.radius;
+  controls["body-gm"].value = gm;
+  controls["launch-altitude"].value = body.altitude;
+  gravitySlider.value = Math.max(1500, Math.min(7000, gm));
+  gravityValue.textContent = id === "sandbox" ? String(gm) : "—";
+  updateSpeedRange();
+  aimSpeed.value = override?.speed ?? (isTransfer() ? 10.92 : Math.min(body.speed, Number(aimSpeed.max)));
+  aimAngle.value = override?.angle ?? 90;
+  syncPlayback();
+  playback.value = isTransfer() ? "24000" : id === "sandbox" ? "3" : "2400";
+  controls["body-note"].textContent = isTransfer()
+    ? "Idealized 8-day flyby with a moving Moon. The main fields edit Earth, and the Moon has separate controls."
+    : "Radius and GM are editable for each profile. Artificial bodies are modeled as isolated spheres.";
+  lastVelocity = null;
+  zoom = baselineScale();
   setFitPath(true);
   resetScene();
 }
 
+function editBody() {
+  if (phase !== "idle") return;
+  const fields = ["body-radius", "body-gm", "launch-altitude"].map(id => controls[id]);
+  const values = fields.map(field => field.value === "" || field.value == null ? NaN : Number(field.value));
+  if (!fields.every((field, i) => Number.isFinite(values[i]) && values[i] >= Number(field.min) && values[i] <= Number(field.max))) return;
+  if (isTransfer()) {
+    const fields = ["moon-radius", "moon-gm", "moon-distance", "moon-phase"].map(id => controls[id]);
+    const numbers = fields.map(field => field.value === "" || field.value == null ? NaN : Number(field.value));
+    const [radius, parameter, distance, phaseAngle] = numbers;
+    if (!fields.every((field, i) => Number.isFinite(numbers[i]) && numbers[i] >= Number(field.min) && numbers[i] <= Number(field.max))) return;
+    if (distance <= values[0] + values[2] + radius) {
+      controls["body-note"].textContent = "Increase the Moon’s distance so its orbit clears both Earth and the launch point.";
+      return;
+    }
+    Object.assign(transfer.moon, { radius, gm: parameter });
+    Object.assign(transfer, { distance, phase: phaseAngle });
+    controls["body-note"].textContent = "Idealized 8-day transfer with your Earth and Moon settings.";
+  }
+  [body.radius, gm, body.altitude] = values;
+  body.gm = gm;
+  if (!isTransfer()) profiles[profileId] = body;
+  if (profileId === "sandbox") {
+    gravitySlider.value = Math.max(1500, Math.min(7000, gm));
+    gravityValue.textContent = String(gm);
+  }
+  updateSpeedRange();
+  clearPreset();
+  lastVelocity = null;
+  setFitPath(true);
+  resetScene();
+}
+
+function applyPreset() {
+  const preset = presets[presetSelect.value];
+  if (!preset) return;
+  loadProfile(preset.profile ?? "sandbox", preset);
+  presetDescription.textContent = preset.description;
+}
+
 function wireControls() {
   presetSelect.addEventListener("change", applyPreset);
+  controls["body-profile"].addEventListener("change", () => {
+    clearPreset();
+    loadProfile(controls["body-profile"].value);
+  });
+  for (const id of ["body-radius", "body-gm", "launch-altitude", "moon-radius", "moon-gm", "moon-distance", "moon-phase"]) controls[id].addEventListener("change", editBody);
+  controls["pause-flight"].addEventListener("click", () => {
+    if (phase !== "flying") return;
+    paused = !paused;
+    controls["pause-flight"].textContent = paused ? "Resume" : "Pause";
+    setPhase(phase);
+  });
+  controls["step-flight"].addEventListener("click", () => {
+    if (phase === "flying" && paused) stepPhysics(physicsStep());
+  });
+  controls["replay-flight"].addEventListener("click", () => {
+    if (!lastVelocity) return;
+    resetScene();
+    launchSatellite(lastVelocity);
+  });
+  controls["pin-path"].addEventListener("click", () => {
+    if (!projection) return;
+    comparison = {
+      profile: profileId, radius: body.radius, path: projection,
+      summary: pathSummary(projection, gm, body.altitude),
+    };
+    setFitPath(true);
+    refreshGuides();
+  });
+  controls["clear-path"].addEventListener("click", () => {
+    comparison = null;
+    refreshGuides();
+  });
   canvas.addEventListener("pointerdown", startGesture);
   canvas.addEventListener("pointermove", moveGesture);
   canvas.addEventListener("pointerup", finishGesture);
@@ -605,7 +811,7 @@ function wireControls() {
     if (phase === "idle" && velocity) launchSatellite(velocity);
   });
   zoomSlider.addEventListener("input", () => {
-    zoom = Number(zoomSlider.value) / 100;
+    zoom = Number(zoomSlider.value) / 100 * baselineScale();
     setFitPath(false);
   });
   fitButton.addEventListener("click", () => {
@@ -624,7 +830,11 @@ function wireControls() {
   });
 
   gravitySlider.addEventListener("input", () => {
-    gm = Number(gravitySlider.value);
+    body.gm = gm = Number(gravitySlider.value);
+    controls["body-gm"].value = gm;
+    lastVelocity = null;
+    controls["replay-flight"].disabled = true;
+    updateSpeedRange();
     gravityValue.textContent = String(gm);
     if (phase === "idle") {
       clearPreset();
@@ -659,6 +869,7 @@ gravityValue.textContent = String(gm);
 customElements.whenDefined("wa-number-input").then(() => {
   if (phase === "idle") updatePrediction();
 });
+customElements.whenDefined("wa-option").then(syncPlayback);
 resize();
 wireControls();
 updateMuteButton();

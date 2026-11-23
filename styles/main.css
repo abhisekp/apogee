@@ -394,3 +394,29 @@ wa-select, wa-number-input { width: 145px; }
 .preset-controls wa-select {
   width: min(100%, 320px);
 }
+
+.experiment-panel, .experiment-buttons, .mission-cards, .comparison-text {
+  flex: 1 1 100%;
+}
+
+.experiment-panel {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+.experiment-panel wa-number-input { width: 175px; }
+.experiment-panel wa-select { width: 220px; }
+.experiment-buttons { flex-wrap: wrap; }
+.mission-cards article + article { margin-top: var(--space-3); }
+.mission-cards h3, .mission-cards p { margin: 0 0 var(--space-2); }
+.mission-cards a { color: var(--accent); }
+.comparison-text { color: #f9c86e; }
+
+.transfer-fields:not([hidden]) {
+  display: flex;
+  flex: 1 1 100%;
+  gap: var(--space-2) var(--space-3);
+  flex-wrap: wrap;
+}

@@ -42,7 +42,7 @@ function projectBoundPath(initial, elements, gm, planetRadius) {
   return { points, outcome: crashes ? "crash" : "orbit" };
 }
 
-export function projectTrajectory(initial, gm, planetRadius, escapeRadius) {
+export function projectTrajectory(initial, gm, planetRadius, escapeRadius, step = SIM_DT) {
   if (Math.hypot(initial.x, initial.y) <= planetRadius) {
     return { points: [initial], outcome: "crash" };
   }
@@ -51,14 +51,17 @@ export function projectTrajectory(initial, gm, planetRadius, escapeRadius) {
 
   const points = [initial];
   let state = initial;
-  for (let i = 1; i <= MAX_ESCAPE_SECONDS / SIM_DT; i++) {
-    state = stepSimulation(state, SIM_DT, gm);
+  const span = Math.max(MAX_ESCAPE_SECONDS, 2 * Math.sqrt(escapeRadius ** 3 / gm));
+  const maxSteps = Math.min(160000, Math.ceil(span / step));
+  const stride = Math.max(8, Math.floor(maxSteps / 1800));
+  for (let i = 1; i <= maxSteps; i++) {
+    state = stepSimulation(state, step, gm);
     const outcome = classifyOutcome(state, planetRadius, escapeRadius, gm);
     if (outcome === "crash" || outcome === "escape") {
       points.push(state);
       return { points, outcome };
     }
-    if (i % 8 === 0) points.push(state);
+    if (i % stride === 0 || i === maxSteps) points.push(state);
   }
   return { points, outcome: "partial" };
 }

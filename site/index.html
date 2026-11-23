@@ -135,12 +135,45 @@
         <wa-option value="1">1×</wa-option><wa-option value="3">3×</wa-option>
         <wa-option value="6">6×</wa-option><wa-option value="12">12×</wa-option>
         <wa-option value="24">24×</wa-option>
+        <wa-option value="240">240×</wa-option><wa-option value="2400">2,400×</wa-option><wa-option value="24000">24,000×</wa-option>
       </wa-select>
       <div class="control view-controls">
         <wa-slider label="Zoom" id="zoom" min="10" max="250" step="1" value="100"></wa-slider>
         <output id="zoom-value" for="zoom">100%</output>
         <wa-button type="button" size="small" id="fit-path" aria-pressed="false">Fit path</wa-button>
       </div>
+      <section class="experiment-panel" aria-label="Simulation setup">
+        <wa-select label="Central body" id="body-profile" size="small" value="sandbox">
+          <wa-option value="sandbox">Sandbox</wa-option>
+          <wa-option value="earth">Earth</wa-option>
+          <wa-option value="moon">Moon</wa-option>
+          <wa-option value="mars">Mars</wa-option>
+          <wa-option value="mercury">Mercury</wa-option>
+          <wa-option value="venus">Venus</wa-option>
+          <wa-option value="jupiter">Jupiter</wa-option>
+          <wa-option value="saturn">Saturn</wa-option>
+          <wa-option value="uranus">Uranus</wa-option>
+          <wa-option value="neptune">Neptune</wa-option>
+          <wa-option value="ceres">Ceres</wa-option>
+          <wa-option value="sun">Sun</wa-option>
+          <wa-option value="station">Artificial station</wa-option>
+          <wa-option value="artificial">Engineered planet (fictional)</wa-option>
+          <wa-option value="custom">Custom</wa-option>
+          <wa-option value="transfer">Earth–Moon transfer</wa-option>
+        </wa-select>
+        <wa-number-input label="Body radius (km)" id="body-radius" size="small" min="0.001" max="100000000" step="0.001" required value="40"></wa-number-input>
+        <wa-number-input label="Body GM (km³/s²)" id="body-gm" size="small" min="0.000000000000001" max="100000000000000000" step="0.000000000000001" required value="4000"></wa-number-input>
+        <wa-number-input label="Launch altitude (km)" id="launch-altitude" size="small" min="0.001" max="100000000" step="0.001" required value="20"></wa-number-input>
+        <div id="transfer-fields" class="transfer-fields" hidden>
+          <wa-number-input label="Moon radius (km)" id="moon-radius" size="small" min="0.001" max="100000000" step="0.001" value="1737.4"></wa-number-input>
+          <wa-number-input label="Moon GM (km³/s²)" id="moon-gm" size="small" min="0.000001" max="100000000000000000" step="0.000001" value="4902.8"></wa-number-input>
+          <wa-number-input label="Moon distance (km)" id="moon-distance" size="small" min="1" max="100000000" step="1" value="384400"></wa-number-input>
+          <wa-number-input label="Moon starting phase (°)" id="moon-phase" size="small" min="-360" max="360" step="1" value="117"></wa-number-input>
+        </div>
+        <p class="aim-help" id="body-note">Body edits apply to the selected profile for this session. Artificial bodies are modeled as spheres.</p>
+        <p class="aim-help" id="speed-guide"></p>
+        <p class="aim-help" id="path-guide"></p>
+      </section>
       <div class="preset-controls">
         <wa-select label="Launch preset" id="launch-preset" size="small" placeholder="Choose a preset">
           <wa-option value="sputnik">Historical · Sputnik 1 · Earth orbit</wa-option>
@@ -156,7 +189,7 @@
           <wa-option value="escape">Experimental · Just above escape</wa-option>
           <wa-option value="weak">Experimental · Weaker gravity</wa-option>
         </wa-select>
-        <p class="aim-help" id="preset-description" aria-live="polite">Historical presets use the simulator’s scale and approximate one phase of each mission.</p>
+        <p class="aim-help" id="preset-description" aria-live="polite">Historical presets illustrate one phase of each mission using simplified initial conditions.</p>
       </div>
       <form class="aim-controls" id="aim-controls">
         <wa-number-input label="Launch speed (km/s)" id="aim-speed" size="small" min="0" max="19.8" step="0.01" required value="8.16"></wa-number-input>
@@ -165,6 +198,19 @@
         <p class="aim-help">0° points away from the planet. +90° is tangential, toward the top. Cyan dashes show the predicted path. Drag the satellite to aim, drag empty space to pan, and scroll over the canvas to zoom.</p>
         <p class="aim-help" id="prediction-status"></p>
       </form>
+      <div class="control-buttons experiment-buttons" aria-label="Playback and comparison">
+        <wa-button type="button" size="small" id="pause-flight" disabled>Pause</wa-button>
+        <wa-button type="button" size="small" id="step-flight" disabled>Step</wa-button>
+        <wa-button type="button" size="small" id="replay-flight" disabled>Replay launch</wa-button>
+        <wa-button type="button" size="small" id="pin-path" disabled>Pin as path B</wa-button>
+        <wa-button type="button" size="small" id="clear-path" disabled>Clear path B</wa-button>
+      </div>
+      <p class="aim-help comparison-text" id="comparison-info" aria-live="polite"></p>
+      <wa-details class="mission-cards" summary="Historical missions">
+        <article><h3>Sputnik 1 · 1957</h3><p>Explore an elliptical Earth orbit inspired by the first artificial satellite. The preset starts in flight above Earth’s surface.</p><a href="https://www.nasa.gov/history/dawn-of-the-space-age/">NASA mission history</a></article>
+        <article><h3>Luna 2 · 1959</h3><p>Explore an incoming trajectory that strikes the Moon. The preset illustrates the final approach as a single-body scenario.</p><a href="https://science.nasa.gov/moon/missions/">NASA lunar missions</a></article>
+        <article><h3>Apollo 8 · 1968</h3><p>Explore departure from Earth. Select Earth–Moon transfer to see a separate, idealized lunar flyby with both bodies pulling on the spacecraft.</p><a href="https://www.nasa.gov/missions/apollo/apollo-8-mission-details/">NASA mission details</a></article>
+      </wa-details>
       <div class="control-buttons">
         <wa-button type="button" size="small" id="mute-toggle">Mute sound</wa-button>
         <wa-button type="button" size="small" id="reset-button">Reset</wa-button>

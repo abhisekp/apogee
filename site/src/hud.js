@@ -4,7 +4,8 @@ const PLACEHOLDER = "—";
 
 function formatUnit(value, unit, digits = 1) {
   if (!Number.isFinite(value)) return PLACEHOLDER;
-  return `${value.toFixed(digits)} ${unit}`;
+  const number = unit === "km/s" && value > 0 && value < 0.01 ? value.toPrecision(4) : value.toFixed(digits);
+  return `${number} ${unit}`;
 }
 
 // Builds the full set of formatted HUD strings from a live simulation
