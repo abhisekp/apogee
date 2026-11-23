@@ -75,6 +75,11 @@ let dragOrigin = null;
 let projection = null;
 let zoom = 1;
 let fitPath = false;
+let cameraX = 0;
+let cameraY = 0;
+let pointerGesture = null;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 2.5;
 let physicsTime = 0;
 let traceStep = 0;
 let lastFrameTime = null;
@@ -103,8 +108,8 @@ function center() {
 }
 
 function currentAim() {
-  if (!aimSpeed.validity.valid || !aimAngle.validity.valid) return null;
-  return aimedVelocity(aimSpeed.valueAsNumber, aimAngle.valueAsNumber);
+  if (!aimSpeed.validity?.valid || !aimAngle.validity?.valid) return null;
+  return aimedVelocity(Number(aimSpeed.value), Number(aimAngle.value));
 }
 
 function updatePrediction(velocity = currentAim()) {
@@ -121,6 +126,10 @@ function updatePrediction(velocity = currentAim()) {
 }
 
 function setFitPath(enabled) {
+  if (enabled) {
+    cameraX = 0;
+    cameraY = 0;
+  }
   fitPath = enabled;
   fitButton.setAttribute("aria-pressed", String(enabled));
 }
@@ -182,8 +191,8 @@ function updateDrag(clientX, clientY) {
     y: anchor.y + clientY - dragOrigin.y,
   }, MAX_DRAG_DISTANCE);
   const velocity = launchVelocity(anchor, dragPointer, DRAG_SENSITIVITY);
-  aimSpeed.value = Math.min(19.8, Math.hypot(velocity.vx, velocity.vy)).toFixed(2);
-  aimAngle.value = (Math.atan2(-velocity.vy, velocity.vx) * 180 / Math.PI).toFixed(1);
+  aimSpeed.value = Number(Math.min(19.8, Math.hypot(velocity.vx, velocity.vy)).toFixed(2));
+  aimAngle.value = Number((Math.atan2(-velocity.vy, velocity.vx) * 180 / Math.PI).toFixed(1));
   updatePrediction(velocity);
 
   const now = performance.now();
@@ -434,9 +443,10 @@ function render() {
   ctx.clearRect(0, 0, width, height);
   drawGrid(width, height);
   const scale = viewScale(width, height);
-  zoomValue.textContent = `${Math.round(scale * 100)}%`;
+  const readout = `${Math.round(scale * 100)}%`;
+  if (zoomValue.textContent !== readout) zoomValue.textContent = readout;
   ctx.save();
-  ctx.translate(cx, cy);
+  ctx.translate(cx + cameraX, cy + cameraY);
   ctx.scale(scale, scale);
   drawTrace(0, 0);
   drawPlanet(0, 0);
@@ -453,7 +463,7 @@ function frame(timestamp) {
   if (lastFrameTime === null) lastFrameTime = timestamp;
   const rawDt = Math.min(MAX_FRAME_DT, (timestamp - lastFrameTime) / 1000);
   lastFrameTime = timestamp;
-  const dt = rawDt * Number(playback.value);
+  const dt = rawDt * (Number(playback.value) || 3);
 
   if (phase === "flying") {
     stepPhysics(dt);
@@ -473,34 +483,83 @@ function updateMuteButton() {
   muteButton.setAttribute("aria-pressed", String(muted));
 }
 
-function wireControls() {
-  canvas.addEventListener("mousedown", (e) => beginDrag(e.clientX, e.clientY));
-  window.addEventListener("mousemove", (e) => updateDrag(e.clientX, e.clientY));
-  window.addEventListener("mouseup", endDrag);
+function manualZoom(scale) {
+  setFitPath(false);
+  zoom = scale;
+  zoomSlider.value = Math.round(scale * 100);
+}
 
-  canvas.addEventListener(
-    "touchstart",
-    (e) => {
-      e.preventDefault();
-      const t = e.touches[0];
-      beginDrag(t.clientX, t.clientY);
-    },
-    { passive: false }
-  );
-  window.addEventListener(
-    "touchmove",
-    (e) => {
-      if (phase !== "dragging") return;
-      e.preventDefault();
-      const t = e.touches[0];
-      updateDrag(t.clientX, t.clientY);
-    },
-    { passive: false }
-  );
-  window.addEventListener("touchend", endDrag);
-  window.addEventListener("touchcancel", () => {
-    if (phase === "dragging") resetScene();
-  });
+function startGesture(event) {
+  if (event.button !== 0 || pointerGesture) return;
+  const rect = canvas.getBoundingClientRect();
+  const scale = viewScale(rect.width, rect.height);
+  const x = event.clientX - rect.left - rect.width / 2;
+  const y = event.clientY - rect.top - rect.height / 2;
+  const hitRadius = event.pointerType === "touch" ? 28 : 20;
+  const aiming = phase === "idle" &&
+    Math.hypot(x - cameraX - LAUNCH_RADIUS * scale, y - cameraY) <= hitRadius;
+  pointerGesture = { id: event.pointerId, aiming, x: event.clientX, y: event.clientY };
+  canvas.setPointerCapture(event.pointerId);
+  canvas.dataset.gesture = aiming ? "aim" : "pan";
+  if (aiming) beginDrag(event.clientX, event.clientY);
+}
+
+function moveGesture(event) {
+  if (pointerGesture?.id !== event.pointerId) return;
+  if (pointerGesture.aiming) {
+    updateDrag(event.clientX, event.clientY);
+    return;
+  }
+  const dx = event.clientX - pointerGesture.x;
+  const dy = event.clientY - pointerGesture.y;
+  if (dx === 0 && dy === 0) return;
+  if (fitPath) {
+    const { width, height } = center();
+    manualZoom(viewScale(width, height));
+  }
+  cameraX += dx;
+  cameraY += dy;
+  pointerGesture.x = event.clientX;
+  pointerGesture.y = event.clientY;
+}
+
+function finishGesture(event) {
+  if (pointerGesture?.id !== event.pointerId) return;
+  const { aiming, x, y } = pointerGesture;
+  pointerGesture = null;
+  delete canvas.dataset.gesture;
+  if (!aiming || phase !== "dragging") return;
+  if (event.type === "pointerup" && Math.hypot(event.clientX - x, event.clientY - y) > 2) {
+    updateDrag(event.clientX, event.clientY);
+    endDrag();
+  } else {
+    resetScene();
+  }
+}
+
+function wheelZoom(event) {
+  if (event.ctrlKey || event.deltaY === 0) return;
+  event.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scale = viewScale(rect.width, rect.height);
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
+  const delta = Math.max(-150, Math.min(150, event.deltaY * unit));
+  const next = Math.max(Math.min(MIN_ZOOM, scale), Math.min(MAX_ZOOM, scale * Math.exp(-delta * 0.002)));
+  const ratio = next / scale;
+  const x = event.clientX - rect.left - rect.width / 2;
+  const y = event.clientY - rect.top - rect.height / 2;
+  cameraX = x - (x - cameraX) * ratio;
+  cameraY = y - (y - cameraY) * ratio;
+  manualZoom(next);
+}
+
+function wireControls() {
+  canvas.addEventListener("pointerdown", startGesture);
+  canvas.addEventListener("pointermove", moveGesture);
+  canvas.addEventListener("pointerup", finishGesture);
+  canvas.addEventListener("pointercancel", finishGesture);
+  canvas.addEventListener("lostpointercapture", finishGesture);
+  canvasWrap.addEventListener("wheel", wheelZoom, { passive: false });
 
   aimForm.addEventListener("input", () => {
     if (phase === "idle") updatePrediction();
@@ -516,7 +575,12 @@ function wireControls() {
   });
   fitButton.addEventListener("click", () => {
     overlay.hidden = true;
-    setFitPath(!fitPath);
+    if (fitPath) {
+      const { width, height } = center();
+      manualZoom(viewScale(width, height));
+    } else {
+      setFitPath(true);
+    }
   });
   document.getElementById("view-path").addEventListener("click", () => {
     overlay.hidden = true;
@@ -554,6 +618,9 @@ function wireControls() {
 
 hudOrbitCount.textContent = String(getOrbitCount());
 gravityValue.textContent = String(gm);
+customElements.whenDefined("wa-number-input").then(() => {
+  if (phase === "idle") updatePrediction();
+});
 resize();
 wireControls();
 updateMuteButton();

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="wa-dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -19,6 +19,8 @@
     href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap"
     rel="stylesheet"
   />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@awesome.me/webawesome@3.2.0/dist-cdn/styles/themes/default.css" />
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@awesome.me/webawesome@3.2.0/dist-cdn/webawesome.loader.js"></script>
   <link rel="stylesheet" href="styles/main.css" />
 </head>
 <body>
@@ -35,8 +37,8 @@
         <div class="outcome-card">
           <p class="outcome-title" id="outcome-title">CRASH</p>
           <dl class="outcome-stats" id="outcome-stats"></dl>
-          <button type="button" class="btn" id="view-path">View path</button>
-          <button type="button" class="btn btn-primary" id="launch-another">Launch Another</button>
+          <wa-button type="button" size="small" id="view-path">View path</wa-button>
+          <wa-button type="button" size="small" variant="brand" id="launch-another">Launch Another</wa-button>
         </div>
       </div>
     </div>
@@ -54,40 +56,30 @@
     </div>
 
     <div class="controls">
-      <label class="control gravity-control" for="gravity-slider">
-        <span class="control-label">gravity&nbsp;(GM)</span>
-        <input type="range" id="gravity-slider" min="1500" max="7000" step="100" value="4000" />
+      <div class="control gravity-control">
+        <wa-slider label="Gravity (GM)" id="gravity-slider" min="1500" max="7000" step="100" value="4000"></wa-slider>
         <span class="control-value" id="gravity-value">4000</span>
-      </label>
-      <label class="control">Playback speed
-        <select id="playback-speed" class="btn">
-          <option value="1">1×</option><option value="3" selected>3×</option>
-          <option value="6">6×</option><option value="12">12×</option><option value="24">24×</option>
-        </select>
-      </label>
+      </div>
+      <wa-select label="Playback speed" id="playback-speed" size="small" value="3">
+        <wa-option value="1">1×</wa-option><wa-option value="3">3×</wa-option>
+        <wa-option value="6">6×</wa-option><wa-option value="12">12×</wa-option>
+        <wa-option value="24">24×</wa-option>
+      </wa-select>
       <div class="control view-controls">
-        <label class="control">Zoom
-          <input type="range" id="zoom" min="10" max="250" step="1" value="100" />
-        </label>
+        <wa-slider label="Zoom" id="zoom" min="10" max="250" step="1" value="100"></wa-slider>
         <output id="zoom-value" for="zoom">100%</output>
-        <button type="button" class="btn" id="fit-path" aria-pressed="false">Fit path</button>
+        <wa-button type="button" size="small" id="fit-path" aria-pressed="false">Fit path</wa-button>
       </div>
       <form class="aim-controls" id="aim-controls">
-        <label class="control">Launch speed
-          <input type="number" id="aim-speed" min="0" max="19.8" step="any" required value="8.16" />
-          u/s
-        </label>
-        <label class="control">Launch angle
-          <input type="number" id="aim-angle" min="-180" max="180" step="any" required value="90" />
-          °
-        </label>
-        <button type="submit" class="btn btn-primary" id="launch-button">Launch</button>
-        <p class="aim-help">0° points away from the planet. +90° is tangential, toward the top. Cyan dashes show the predicted path.</p>
+        <wa-number-input label="Launch speed (u/s)" id="aim-speed" size="small" min="0" max="19.8" step="0.01" required value="8.16"></wa-number-input>
+        <wa-number-input label="Launch angle (°)" id="aim-angle" size="small" min="-180" max="180" step="0.1" required value="90"></wa-number-input>
+        <wa-button type="submit" size="small" variant="brand" id="launch-button">Launch</wa-button>
+        <p class="aim-help">0° points away from the planet. +90° is tangential, toward the top. Cyan dashes show the predicted path. Drag the satellite to aim, drag empty space to pan, and scroll over the canvas to zoom.</p>
         <p class="aim-help" id="prediction-status"></p>
       </form>
       <div class="control-buttons">
-        <button type="button" class="btn btn-icon" id="mute-toggle" aria-label="Mute sound" aria-pressed="false"></button>
-        <button type="button" class="btn" id="reset-button">Reset</button>
+        <wa-button type="button" size="small" id="mute-toggle" aria-label="Mute sound" aria-pressed="false"></wa-button>
+        <wa-button type="button" size="small" id="reset-button">Reset</wa-button>
       </div>
     </div>
   </main>
