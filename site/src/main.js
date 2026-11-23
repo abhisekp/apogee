@@ -115,7 +115,7 @@ function updatePrediction(velocity = currentAim()) {
     crash: "Predicted impact",
     orbit: "Predicted orbit",
     escape: "Predicted escape",
-    partial: "Preview limited to 120 simulated seconds",
+    partial: "Escape preview ended before reaching the boundary",
   };
   predictionStatus.textContent = projection ? labels[projection.outcome] : "";
 }
