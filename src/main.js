@@ -87,8 +87,11 @@ const isTransfer = () => profileId === "transfer";
 const launchRadius = () => body.radius + body.altitude;
 const escapeRadius = () => Math.max(body.radius * 8, launchRadius() * 4, 0.001);
 const baselineScale = () => 40 / body.radius;
-const physicsStep = () => isTransfer() ? TRANSFER_STEP : profileId === "sandbox" ? SIM_DT :
-  Math.sqrt(body.radius ** 3 / gm) / 300;
+function physicsStep() {
+  if (isTransfer()) return TRANSFER_STEP;
+  const adaptive = Math.sqrt(body.radius ** 3 / gm) / 300;
+  return profileId === "sandbox" ? Math.min(SIM_DT, adaptive) : adaptive;
+}
 const speedText = value => value > 0 && value < 0.01 ? value.toPrecision(4) : value.toFixed(2);
 
 function compatibleComparison() {
@@ -265,7 +268,7 @@ function updateDrag(clientX, clientY) {
   }, MAX_DRAG_DISTANCE);
   const velocity = dragVelocity();
   const precision = Number(aimSpeed.step) < 0.01 ? 10 : 2;
-  aimSpeed.value = Number(Math.hypot(velocity.vx, velocity.vy).toFixed(precision));
+  aimSpeed.value = Math.min(Number(aimSpeed.max), Number(Math.hypot(velocity.vx, velocity.vy).toFixed(precision)));
   aimAngle.value = Number((Math.atan2(-velocity.vy, velocity.vx) * 180 / Math.PI).toFixed(1));
   updatePrediction(velocity);
 
@@ -325,7 +328,7 @@ function resolveOutcome(kind) {
 
   hudStatus.dataset.outcome = kind;
   if (kind === "crash") {
-    if (!reducedMotion) particles = createDebrisBurst(satellite.x, satellite.y);
+    if (!reducedMotion && profileId === "sandbox" && body.radius === 40) particles = createDebrisBurst(satellite.x, satellite.y);
     triggerShake();
     audio.playCrash();
     hudStatus.textContent = "CRASH";
@@ -426,19 +429,19 @@ function drawGrid(width, height) {
   ctx.restore();
 }
 
-function drawLaunchPad(cx, cy) {
+function drawLaunchPad(cx, cy, scale) {
   if (phase !== "idle" && phase !== "dragging") return;
   ctx.save();
   ctx.strokeStyle = "rgba(77, 216, 232, 0.4)";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([2, 5]);
+  ctx.lineWidth = 1 / scale;
+  ctx.setLineDash([2 / scale, 5 / scale]);
   ctx.beginPath();
   ctx.arc(cx, cy, launchRadius(), 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
 }
 
-function drawPlanet(cx, cy) {
+function drawPlanet(cx, cy, scale) {
   const glow = ctx.createRadialGradient(cx, cy, body.radius * 0.4, cx, cy, body.radius * 2.2);
   const rimColor = outcome === "crash" ? "255, 82, 82" : "77, 216, 232";
   glow.addColorStop(0, `rgba(${rimColor}, 0.35)`);
@@ -450,7 +453,7 @@ function drawPlanet(cx, cy) {
 
   ctx.fillStyle = "#0f1f38";
   ctx.strokeStyle = outcome === "crash" ? "#ff5252" : "#4dd8e8";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2 / scale;
   ctx.beginPath();
   ctx.arc(cx, cy, body.radius, 0, Math.PI * 2);
   ctx.fill();
@@ -538,22 +541,24 @@ function drawParticles(cx, cy) {
   }
 }
 
-function drawDragIndicator(cx, cy) {
+function drawDragIndicator(cx, cy, scale) {
   if (phase !== "dragging" || !dragPointer) return;
   const anchor = anchorPoint();
   ctx.save();
   ctx.strokeStyle = "#4dd8e8";
-  ctx.lineWidth = 2;
-  ctx.setLineDash([6, 4]);
+  const x = cx + anchor.x + (dragPointer.x - anchor.x) / scale;
+  const y = cy + anchor.y + (dragPointer.y - anchor.y) / scale;
+  ctx.lineWidth = 2 / scale;
+  ctx.setLineDash([6 / scale, 4 / scale]);
   ctx.beginPath();
   ctx.moveTo(cx + anchor.x, cy + anchor.y);
-  ctx.lineTo(cx + dragPointer.x, cy + dragPointer.y);
+  ctx.lineTo(x, y);
   ctx.stroke();
 
   ctx.setLineDash([]);
   ctx.fillStyle = "#ff6b4a";
   ctx.beginPath();
-  ctx.arc(cx + dragPointer.x, cy + dragPointer.y, 5, 0, Math.PI * 2);
+  ctx.arc(x, y, 5 / scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -569,13 +574,13 @@ function render() {
   ctx.translate(cx + cameraX, cy + cameraY);
   ctx.scale(scale, scale);
   drawTrace(0, 0, scale);
-  drawPlanet(0, 0);
-  drawLaunchPad(0, 0);
+  drawPlanet(0, 0, scale);
+  drawLaunchPad(0, 0, scale);
   if (compatibleComparison()) drawPrediction(0, 0, scale, comparison.path, "#f9c86e");
   drawPrediction(0, 0, scale, projection, "#4dd8e8");
   drawOverlays(scale);
   drawParticles(0, 0);
-  drawDragIndicator(0, 0);
+  drawDragIndicator(0, 0, scale);
   drawSatellite(0, 0, scale);
   ctx.restore();
   updateHud();
