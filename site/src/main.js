@@ -57,11 +57,6 @@ const audio = createAudioEngine();
 const reducedMotion =
   typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const ICON_UNMUTED =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 12a4.5 4.5 0 0 0-2-3.74v7.48A4.5 4.5 0 0 0 16.5 12z"/><path d="M14.5 4.97v2.06a7 7 0 0 1 0 13.94v2.06a9 9 0 0 0 0-18.06z"/></svg>';
-const ICON_MUTED =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M19.5 12l2.5-2.5-1-1-2.5 2.5-2.5-2.5-1 1 2.5 2.5-2.5 2.5 1 1 2.5-2.5 2.5 2.5 1-1z"/></svg>';
-
 let gm = DEFAULT_GM;
 let phase = "idle"; // idle | dragging | flying | resolved
 let satellite = null; // { x, y, vx, vy }
@@ -478,9 +473,7 @@ function frame(timestamp) {
 
 function updateMuteButton() {
   const muted = audio.isMuted();
-  muteButton.innerHTML = muted ? ICON_MUTED : ICON_UNMUTED;
-  muteButton.setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
-  muteButton.setAttribute("aria-pressed", String(muted));
+  muteButton.textContent = muted ? "Unmute sound" : "Mute sound";
 }
 
 function manualZoom(scale) {

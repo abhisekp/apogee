@@ -344,9 +344,6 @@ body {
     justify-content: center;
   }
 
-  input[type="range"] {
-    width: 110px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -381,8 +378,7 @@ body {
 
 wa-slider { width: 140px; }
 wa-select, wa-number-input { width: 145px; }
-wa-button svg { width: 20px; height: 20px; fill: currentColor; }
 #fit-path[aria-pressed="true"]::part(base) { border-color: var(--accent); }
-.controls, .outcome-card { align-items: end; }
+.controls { align-items: end; }
 #scene { cursor: grab; touch-action: none; }
 #scene[data-gesture] { cursor: grabbing; }
