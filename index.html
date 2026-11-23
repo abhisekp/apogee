@@ -70,6 +70,23 @@
         <output id="zoom-value" for="zoom">100%</output>
         <wa-button type="button" size="small" id="fit-path" aria-pressed="false">Fit path</wa-button>
       </div>
+      <div class="preset-controls">
+        <wa-select label="Launch preset" id="launch-preset" size="small" placeholder="Choose a preset">
+          <wa-option value="sputnik">Historical · Sputnik 1 · Earth orbit</wa-option>
+          <wa-option value="luna">Historical · Luna 2 · lunar impact</wa-option>
+          <wa-option value="apollo">Historical · Apollo 8 · Earth departure</wa-option>
+          <wa-option value="circle">Abstract · Nearly circular</wa-option>
+          <wa-option value="ellipse">Abstract · Long ellipse</wa-option>
+          <wa-option value="reverse">Abstract · Reverse orbit</wa-option>
+          <wa-option value="drop">Abstract · Straight drop</wa-option>
+          <wa-option value="skim">Experimental · Surface skim</wa-option>
+          <wa-option value="impact">Experimental · Surface impact</wa-option>
+          <wa-option value="bound">Experimental · Just below escape</wa-option>
+          <wa-option value="escape">Experimental · Just above escape</wa-option>
+          <wa-option value="weak">Experimental · Weaker gravity</wa-option>
+        </wa-select>
+        <p class="aim-help" id="preset-description" aria-live="polite">Historical presets use the simulator’s scale and approximate one phase of each mission.</p>
+      </div>
       <form class="aim-controls" id="aim-controls">
         <wa-number-input label="Launch speed (km/s)" id="aim-speed" size="small" min="0" max="19.8" step="0.01" required value="8.16"></wa-number-input>
         <wa-number-input label="Launch angle (°)" id="aim-angle" size="small" min="-180" max="180" step="0.1" required value="90"></wa-number-input>

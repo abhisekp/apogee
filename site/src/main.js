@@ -38,6 +38,24 @@ const playback = document.getElementById("playback-speed");
 const zoomSlider = document.getElementById("zoom");
 const zoomValue = document.getElementById("zoom-value");
 const fitButton = document.getElementById("fit-path");
+const presetSelect = document.getElementById("launch-preset");
+const presetDescription = document.getElementById("preset-description");
+const defaultPresetDescription = presetDescription.textContent;
+const presets = {
+  sputnik: { gm: 4000, speed: 8.36, angle: 90, description: "Inspired by Sputnik 1’s elliptical Earth orbit in 1957." },
+  luna: { gm: 4000, speed: 3.5, angle: 145, description: "Inspired by Luna 2’s 1959 lunar impact. The central body represents the Moon." },
+  apollo: { gm: 4000, speed: 12.1, angle: 80, description: "Inspired by Apollo 8 leaving Earth orbit in 1968. The preview ends at the departure boundary." },
+  circle: { gm: 4000, speed: 8.16, angle: 90, description: "A tangential launch tuned to stay nearly the same distance from the center." },
+  ellipse: { gm: 4000, speed: 10.65, angle: 90, description: "A fast tangential launch creates a wide ellipse with a distant apoapsis." },
+  reverse: { gm: 4000, speed: 8.16, angle: -90, description: "The nearly circular setup with its launch direction reversed." },
+  drop: { gm: 4000, speed: 0, angle: 0, description: "Release from rest and watch gravity pull the satellite into the surface." },
+  skim: { gm: 4000, speed: 7.34, angle: 90, description: "Compare this close pass with Surface impact. The launch speed differs by 0.08 km/s." },
+  impact: { gm: 4000, speed: 7.26, angle: 90, description: "A slight speed reduction brings the trajectory into the surface." },
+  bound: { gm: 4000, speed: 11.5, angle: 90, description: "A near-escape launch that stays bound. Compare it with Just above escape." },
+  escape: { gm: 4000, speed: 11.55, angle: 90, description: "At this gravity and launch altitude, escape speed is about 11.547 km/s." },
+  weak: { gm: 1600, speed: 8.16, angle: 90, description: "Uses the same launch as Nearly circular with a weaker gravity parameter." },
+};
+
 const aimForm = document.getElementById("aim-controls");
 const aimSpeed = document.getElementById("aim-speed");
 const aimAngle = document.getElementById("aim-angle");
@@ -180,6 +198,7 @@ function beginDrag(clientX, clientY) {
 
 function updateDrag(clientX, clientY) {
   if (phase !== "dragging") return;
+  clearPreset();
   const anchor = anchorPoint();
   dragPointer = clampToMaxDistance(anchor, {
     x: anchor.x + clientX - dragOrigin.x,
@@ -546,7 +565,27 @@ function wheelZoom(event) {
   manualZoom(next);
 }
 
+function clearPreset() {
+  if (!presetSelect.value) return;
+  presetSelect.value = "";
+  presetDescription.textContent = defaultPresetDescription;
+}
+
+function applyPreset() {
+  const preset = presets[presetSelect.value];
+  if (!preset) return;
+  gm = preset.gm;
+  gravitySlider.value = gm;
+  gravityValue.textContent = String(gm);
+  aimSpeed.value = preset.speed;
+  aimAngle.value = preset.angle;
+  presetDescription.textContent = preset.description;
+  setFitPath(true);
+  resetScene();
+}
+
 function wireControls() {
+  presetSelect.addEventListener("change", applyPreset);
   canvas.addEventListener("pointerdown", startGesture);
   canvas.addEventListener("pointermove", moveGesture);
   canvas.addEventListener("pointerup", finishGesture);
@@ -555,7 +594,10 @@ function wireControls() {
   canvasWrap.addEventListener("wheel", wheelZoom, { passive: false });
 
   aimForm.addEventListener("input", () => {
-    if (phase === "idle") updatePrediction();
+    if (phase === "idle") {
+      clearPreset();
+      updatePrediction();
+    }
   });
   aimForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -583,8 +625,11 @@ function wireControls() {
 
   gravitySlider.addEventListener("input", () => {
     gm = Number(gravitySlider.value);
-    gravityValue.textContent = gravitySlider.value;
-    if (phase === "idle") updatePrediction();
+    gravityValue.textContent = String(gm);
+    if (phase === "idle") {
+      clearPreset();
+      updatePrediction();
+    }
   });
 
   muteButton.addEventListener("click", () => {
