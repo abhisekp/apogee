@@ -493,12 +493,16 @@ function drawPrediction(cx, cy, scale, path, color) {
 }
 
 function drawMarker(point, label, color, scale, offset = -7) {
+  ctx.save();
+  ctx.translate(point.x, point.y);
+  ctx.scale(1 / scale, 1 / scale);
   ctx.fillStyle = color;
-  ctx.font = `${11 / scale}px monospace`;
+  ctx.font = "11px monospace";
   ctx.beginPath();
-  ctx.arc(point.x, point.y, 3 / scale, 0, 2 * Math.PI);
+  ctx.arc(0, 0, 3, 0, 2 * Math.PI);
   ctx.fill();
-  ctx.fillText(label, point.x + 7 / scale, point.y + offset / scale);
+  ctx.fillText(label, 7, offset);
+  ctx.restore();
 }
 
 function drawOverlays(scale) {
