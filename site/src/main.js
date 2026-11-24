@@ -334,6 +334,7 @@ let cameraY = 0;
 let pointerGesture = null;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 2.5;
+let minimumZoom = MIN_ZOOM;
 let physicsTime = 0;
 let traceStep = 0;
 let lastFrameTime = null;
@@ -833,7 +834,8 @@ function render() {
   } else {
     drawGrid(width, height);
   }
-  const readout = `${Math.round(scale / baselineScale() * 100)}%`;
+  const percent = scale / baselineScale() * 100;
+  const readout = `${percent < 10 ? Number(percent.toPrecision(2)) : Math.round(percent)}%`;
   if (zoomValue.textContent !== readout) zoomValue.textContent = readout;
   ctx.save();
   ctx.translate(cx + cameraX, cy + cameraY);
@@ -882,10 +884,29 @@ function updateMuteButton() {
   muteButton.textContent = muted ? "Unmute sound" : "Mute sound";
 }
 
+function setMinimumZoom(factor) {
+  if (factor === minimumZoom) return;
+  minimumZoom = factor;
+  zoomSlider.min = factor * 100;
+  zoomSlider.step = factor * 10;
+}
+
+function allowZoomBelowFit(scale) {
+  if (!fitPath) return;
+  const factor = scale / baselineScale();
+  if (factor <= 2 * minimumZoom) {
+    // Leave a full decade of zoom-out room when the fitted scene is already very small.
+    setMinimumZoom(Math.min(minimumZoom, 10 ** (Math.floor(Math.log10(factor)) - 1)));
+  }
+}
+
 function manualZoom(scale) {
+  allowZoomBelowFit(scale);
   setFitPath(false);
   zoom = scale;
-  zoomSlider.value = Math.round(scale / baselineScale() * 100);
+  const percent = scale / baselineScale() * 100;
+  const step = Number(zoomSlider.step) || 1;
+  zoomSlider.value = Number((Math.round(percent / step) * step).toPrecision(12));
 }
 
 function startGesture(event) {
@@ -943,7 +964,9 @@ function wheelZoom(event) {
   const scale = viewScale(rect.width, rect.height);
   const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
   const delta = Math.max(-150, Math.min(150, event.deltaY * unit));
-  const next = Math.max(Math.min(MIN_ZOOM * baselineScale(), scale), Math.min(MAX_ZOOM * baselineScale(), scale * Math.exp(-delta * 0.002)));
+  allowZoomBelowFit(scale);
+  const base = baselineScale();
+  const next = Math.max(minimumZoom * base, Math.min(MAX_ZOOM * base, scale * Math.exp(-delta * 0.002)));
   const ratio = next / scale;
   const x = event.clientX - rect.left - rect.width / 2;
   const y = event.clientY - rect.top - rect.height / 2;
@@ -1007,6 +1030,7 @@ function loadProfile(id, override) {
     : "Radius and GM are editable for each profile. Artificial bodies are modeled as isolated spheres.";
   lastVelocity = null;
   zoom = baselineScale();
+  setMinimumZoom(MIN_ZOOM);
   setFitPath(true);
   resetScene();
 }
@@ -1563,6 +1587,7 @@ function wireControls() {
     clearObjects();
     comparison = null;
     lastVelocity = null;
+    setMinimumZoom(MIN_ZOOM);
     setFitPath(true);
     resetScene();
     syncObjectDefaults();
