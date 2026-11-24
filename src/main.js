@@ -987,7 +987,7 @@ function loadProfile(id, override) {
   for (const tile of document.querySelectorAll("[data-toy]")) tile.disabled = isTransfer();
   document.getElementById("flight-hint").textContent = isTransfer()
     ? "Use Launch for an Earth–Moon transfer. Quick launch tiles are available with a single central body."
-    : "Tap a tile for a quick launch, or drop it into the scene to aim by dragging.";
+    : "Drag any picture into the scene to aim and launch. Tap a catalog picture to edit its settings.";
   if (isTransfer()) objectStatus.textContent = "Select a single central body to add objects.";
   controls["body-profile"].value = id;
   controls["transfer-fields"].hidden = !isTransfer();
@@ -1079,7 +1079,6 @@ function wirePalette() {
   ];
 
   function focusObjectForm(field) {
-    editingCatalogTile = null;
     document.querySelector(".advanced-settings").open = true;
     objectForm.closest("wa-details").open = true;
     objectForm.scrollIntoView({ block: "center", behavior: "instant" });
