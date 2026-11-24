@@ -653,7 +653,7 @@ function drawLaunchPad(cx, cy, scale) {
   ctx.lineWidth = 1 / scale;
   ctx.setLineDash([2 / scale, 5 / scale]);
   ctx.beginPath();
-  ctx.arc(cx, cy, launchRadius(), 0, Math.PI * 2);
+  ctx.arc(cx, cy, launchRadius(), -0.14, 0.14);
   ctx.stroke();
   ctx.restore();
 }
@@ -675,10 +675,10 @@ function drawPlanet(cx, cy, scale) {
   ctx.beginPath();
   ctx.arc(cx, cy, body.radius, 0, Math.PI * 2);
   ctx.fill();
-  ctx.stroke();
-  if (["sandbox", "earth"].includes(profileId) && displayRadius * scale >= 22) {
-    drawFlightIcon("🌍", cx, cy, scale, Math.min(78, displayRadius * scale * 1.65));
+  if (["sandbox", "earth"].includes(profileId)) {
+    drawBodyArtwork("🌍", cx, cy, body.radius, scale);
   }
+  ctx.stroke();
 }
 
 function drawTrace(cx, cy, scale) {
@@ -757,6 +757,15 @@ function drawFlightIcon(icon, x, y, scale, size = 24) {
   ctx.restore();
 }
 
+// The current path is the physical outline. Keep artwork inside that silhouette.
+function drawBodyArtwork(icon, x, y, radius, scale) {
+  if (!icon || radius * scale < 4) return;
+  ctx.save();
+  ctx.clip();
+  drawFlightIcon(icon, x, y, scale, radius * scale * 2.55);
+  ctx.restore();
+}
+
 function centralContact(point) {
   const distance = Math.hypot(point.x, point.y);
   if (!distance) return { x: body.radius, y: 0 };
@@ -802,15 +811,14 @@ function drawExtraObjects(scale) {
     ctx.stroke();
     ctx.beginPath();
     ctx.arc(object.x, object.y, object.radius, 0, Math.PI * 2);
-    ctx.globalAlpha = 0.26;
+    ctx.globalAlpha = object.icon ? 0.75 : 0.45;
     ctx.fill();
     ctx.globalAlpha = 1;
+    drawBodyArtwork(object.icon, object.x, object.y, object.radius, scale);
     ctx.stroke();
     if (object.status === "Central body impact") {
       const contact = centralContact(object);
       drawFlightIcon("💥", contact.x, contact.y, scale);
-    } else if (object.icon) {
-      drawFlightIcon(object.icon, object.x, object.y, scale);
     }
     ctx.restore();
   }
@@ -1371,6 +1379,9 @@ function drawStagedLaunch(scale) {
   ctx.lineWidth = 1 / scale;
   ctx.beginPath();
   ctx.arc(object.x, object.y, object.radius, 0, Math.PI * 2);
+  ctx.fillStyle = "#574c31";
+  ctx.fill();
+  drawBodyArtwork(toy?.icon ?? "🪐", object.x, object.y, object.radius, scale);
   ctx.stroke();
   ctx.restore();
   const circular = circularOrbitVelocity(body.radius + stagedLaunch.altitude, gm);
@@ -1393,7 +1404,6 @@ function drawStagedLaunch(scale) {
   }
   ctx.stroke();
   ctx.restore();
-  drawFlightIcon(toy?.icon ?? "🪐", object.x, object.y, scale);
 }
 
 function wirePlacement() {
