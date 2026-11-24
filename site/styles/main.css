@@ -498,3 +498,28 @@ wa-number-input::part(input) { font-size: 0.8rem; font-variant-numeric: tabular-
 .palette-entry-info { color: var(--text-muted); font-size: 0.76rem; }
 .palette-keys { margin: 0; color: var(--text-muted); font-size: 0.78rem; }
 .scene-toolbar kbd { margin-inline-start: 0.35em; font-size: 0.72rem; opacity: 0.8; }
+
+.mode-picker { display: flex; justify-content: center; padding: 8px; }
+.kids-space[hidden], #advanced-space[hidden] { display: none; }
+body[data-kids] .about, body[data-kids] .masthead .tagline { display: none; }
+.kids-space {
+  width: min(94vw, 920px); margin: 0 auto 28px; padding: clamp(12px, 3vw, 24px);
+  color: #eceeff; background: linear-gradient(150deg, #22204f, #161330);
+  border: 2px solid #7866da; border-radius: 24px;
+  font-family: system-ui, sans-serif;
+}
+.kids-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kids-title h2 { font-size: clamp(1.2rem, 5vw, 2rem); margin: 0; }
+.kids-hint { text-align: center; margin: 10px 0; }
+.kids-tray { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding-bottom: 12px; }
+.kids-tray wa-button { touch-action: none; user-select: none; }
+.kids-tray wa-button::part(base) {
+  min-width: clamp(55px, 15vw, 90px); min-height: clamp(55px, 15vw, 86px);
+  padding: 0; font-size: clamp(1.7rem, 7vw, 3rem);
+  border: 2px solid #aa99ff; border-radius: 16px; background: #362d72; cursor: grab;
+}
+.kids-tray wa-button::part(base):hover { background: #493b91; }
+.kids-sky { border: 2px dashed #746bd9; border-radius: 18px; overflow: hidden; background: #100d2a; }
+#kids-canvas { display: block; width: 100%; height: clamp(270px, 55vw, 460px); }
+.kids-feedback { text-align: center; font-size: 1.1rem; min-height: 1.5em; margin-bottom: 0; }
+.kids-ghost { position: fixed; z-index: 9999; pointer-events: none; font-size: 3rem; transform: translate(-50%, -50%); }

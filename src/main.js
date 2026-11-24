@@ -3,6 +3,7 @@ import { bodies, transferDefaults, TRANSFER_STEP, moonPosition, stepTransfer, tr
 import { launchObject, MAX_OBJECTS, stepObjects } from "./objects.js";
 import { createWells, drawSpacetime } from "./spacetime.js";
 import { catalog, searchEntries } from "./catalog.js";
+import { wireKidsMode } from "./kids.js";
 import { aimedVelocity, projectTrajectory, SIM_DT } from "./projection.js";
 import { dragDistance, clampToMaxDistance, launchVelocity } from "./input.js";
 import { buildHudReadout } from "./hud.js";
@@ -745,6 +746,11 @@ function renderSpacetime() {
 }
 
 function frame(timestamp) {
+  if (document.body.hasAttribute("data-kids")) {
+    lastFrameTime = null;
+    requestAnimationFrame(frame);
+    return;
+  }
   if (lastFrameTime === null) lastFrameTime = timestamp;
   const rawDt = Math.min(MAX_FRAME_DT, (timestamp - lastFrameTime) / 1000);
   lastFrameTime = timestamp;
@@ -1058,7 +1064,7 @@ function wirePalette() {
     }
   });
   document.addEventListener("keydown", event => {
-    if (event.defaultPrevented || event.repeat || event.altKey || event.isComposing) return;
+    if (document.body.hasAttribute("data-kids") || event.defaultPrevented || event.repeat || event.altKey || event.isComposing) return;
     const modified = event.ctrlKey || event.metaKey;
     const target = event.composedPath()[0];
     const editing = target?.isContentEditable || target?.matches?.("input, textarea, select, wa-input, wa-number-input");
@@ -1214,3 +1220,5 @@ wireControls();
 updateMuteButton();
 resetScene();
 requestAnimationFrame(frame);
+
+wireKidsMode();

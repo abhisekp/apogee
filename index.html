@@ -6,7 +6,7 @@
   <title>Apogee — orbital mechanics simulator you play in one drag</title>
   <meta
     name="description"
-    content="Apogee is a gravity simulator browser game: drag to launch a satellite off a tiny planet and watch real two-body physics resolve to a crash, orbit, or escape."
+    content="Explore gravity and orbits in Apogee. Launch satellites, compare trajectories, and play with picture-based drag and drop in Kids Mode."
   />
   <link
     rel="icon"
@@ -30,7 +30,20 @@
     </h1>
     <p class="tagline">drag a satellite off a tiny planet: crash, orbit, or escape</p>
   </header>
-  <main class="stage">
+  <div class="mode-picker"><wa-button id="kids-toggle" type="button" variant="brand" aria-controls="kids-space">🧒 Kids Mode</wa-button></div>
+  <section class="kids-space" id="kids-space" aria-label="Kids Mode" hidden>
+    <div class="kids-title"><h2>🚀 Space playground</h2><wa-button id="kids-clear" type="button" aria-label="Clear the playground">🧹 Clear</wa-button></div>
+    <p class="kids-hint">👆 Tap or drag a picture into space</p>
+    <div class="kids-tray" aria-label="Launch toys">
+      <wa-button type="button" data-toy="satellite" aria-label="Launch satellite"><span aria-hidden="true">🛰️</span></wa-button>
+      <wa-button type="button" data-toy="rocket" aria-label="Launch rocket"><span aria-hidden="true">🚀</span></wa-button>
+      <wa-button type="button" data-toy="rock" aria-label="Launch space rock"><span aria-hidden="true">🪨</span></wa-button>
+      <wa-button type="button" data-toy="ball" aria-label="Launch ball"><span aria-hidden="true">⚽</span></wa-button>
+    </div>
+    <div class="kids-sky"><canvas id="kids-canvas" aria-label="Space playground showing Earth and the paths of launched toys"></canvas></div>
+    <p id="kids-feedback" class="kids-feedback" role="status" aria-live="polite"></p>
+  </section>
+  <main class="stage" id="advanced-space">
     <div class="scene-toolbar" aria-label="Scene controls">
       <wa-button id="open-catalog" type="button" appearance="outlined" size="small">Search objects <kbd>/</kbd></wa-button>
       <wa-button id="open-commands" type="button" appearance="outlined" size="small">Commands <kbd>Ctrl/⌘ K</kbd></wa-button>
