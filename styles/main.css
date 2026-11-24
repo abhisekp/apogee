@@ -437,3 +437,13 @@ wa-number-input::part(input) { font-size: 0.8rem; font-variant-numeric: tabular-
 .object-list { list-style: none; margin: 10px 0 0; padding: 0; }
 .object-list:empty { display: none; }
 .object-list li { align-items: center; justify-content: space-between; padding-block: 5px; }
+
+.scene-launch {
+  width: min(100%, 900px);
+  display: flex;
+  justify-content: center;
+}
+
+.scene-launch wa-button {
+  width: min(100%, 180px);
+}

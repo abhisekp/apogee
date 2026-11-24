@@ -52,6 +52,9 @@
       </div>
     </div>
 
+    <div class="scene-launch">
+      <wa-button type="submit" form="aim-controls" variant="brand" id="launch-button">Launch</wa-button>
+    </div>
     <wa-details class="object-launcher" summary="Add orbiting objects" open>
       <form id="object-form" class="object-form" novalidate>
         <wa-input id="object-name" label="Name" size="small" maxlength="28" placeholder="Object name"></wa-input>
@@ -147,7 +150,6 @@
       <form class="aim-controls" id="aim-controls">
         <wa-number-input without-steppers label="Launch speed (km/s)" id="aim-speed" size="small" min="0" max="19.8" step="0.01" required value="8.16"></wa-number-input>
         <wa-number-input without-steppers label="Launch angle (°)" id="aim-angle" size="small" min="-180" max="180" step="0.1" required value="90"></wa-number-input>
-        <wa-button type="submit" size="small" variant="brand" id="launch-button">Launch</wa-button>
         <p class="aim-help">0° points away from the planet. +90° is tangential, toward the top. Cyan dashes show the predicted path. Drag the satellite to aim, drag empty space to pan, and scroll over the canvas to zoom.</p>
         <p class="aim-help" id="prediction-status"></p>
       </form>
