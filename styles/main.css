@@ -377,7 +377,9 @@ body {
 
 
 wa-slider { width: 140px; }
-wa-select, wa-number-input { width: 145px; }
+wa-select { width: 145px; }
+wa-number-input { width: min(100%, 290px); }
+wa-number-input::part(input) { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 #fit-path[aria-pressed="true"]::part(base) { border-color: var(--accent); }
 .controls { align-items: end; }
 #scene { cursor: grab; touch-action: none; }
@@ -406,7 +408,6 @@ wa-select, wa-number-input { width: 145px; }
   gap: var(--space-2) var(--space-3);
 }
 
-.experiment-panel wa-number-input { width: 175px; }
 .experiment-panel wa-select { width: 220px; }
 .experiment-buttons { flex-wrap: wrap; }
 .mission-cards article + article { margin-top: var(--space-3); }
@@ -422,16 +423,16 @@ wa-select, wa-number-input { width: 145px; }
 }
 
 .scene-toolbar, .object-launcher { width: min(100%, 900px); }
-.scene-toolbar { display: flex; justify-content: flex-end; gap: 12px; }
+.scene-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
 .reset-confirmation:not([hidden]), .object-form, .object-list li {
   display: flex;
   align-items: end;
   flex-wrap: wrap;
   gap: 8px 12px;
 }
-.reset-confirmation { align-items: center; }
+.reset-confirmation { align-items: center; justify-content: flex-end; flex: 1 1 100%; }
 .object-form { margin-bottom: 12px; }
-.object-form wa-number-input, .object-form wa-input { width: min(100%, 145px); }
+.object-form wa-input { width: min(100%, 290px); }
 .object-launcher .aim-help { margin-top: 8px; }
 .object-list { list-style: none; margin: 10px 0 0; padding: 0; }
 .object-list:empty { display: none; }
