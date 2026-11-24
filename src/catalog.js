@@ -110,3 +110,40 @@ export function searchEntries(entries, query) {
     return terms.every(term => text.includes(term));
   });
 }
+
+const catalogStyles = {
+  "Tiny particles and fragments": ["💠", 1e-9, 0.0000002],
+  "Hand-sized objects and boulders": ["🪨", 1, 0.00005],
+  "Artificial satellites and telescopes": ["🛰️", 1000, 0.002],
+  "Probes, landers, and rovers": ["🚀", 1000, 0.002],
+  "Asteroids and comet nuclei": ["☄️", 1e12, 0.5],
+  "Natural moons": ["🌙", 1e19, 100],
+  "Planets and dwarf planets": ["🪐", 1e22, 800],
+  "Exoplanets and brown dwarfs": ["🟣", 6e24, 6400],
+  "Stars": ["⭐", 2e30, 700000],
+  "Stellar remnants": ["✨", null, null],
+  "Black holes": ["⚫", null, null],
+};
+
+const namedIcons = {
+  Earth: "🌍", "Earth’s Moon": "🌕", Sun: "☀️", Mars: "🔴", Jupiter: "🟠", Saturn: "🪐",
+  Neptune: "🔵", Uranus: "🩵", Venus: "🟡", Mercury: "🌑", Bennu: "🪨",
+  "International Space Station": "🛰️", "James Webb Space Telescope": "🔭", "Hubble Space Telescope": "🔭",
+};
+
+export function catalogIcon(entry) {
+  return namedIcons[entry.name] ?? catalogStyles[entry.category]?.[0] ?? "✦";
+}
+
+export function catalogDefaults(entry, profiles) {
+  const profile = profiles[entry.profile];
+  const [, fallbackMass, fallbackRadius] = catalogStyles[entry.category] ?? ["✦", 1000, 0.002];
+  return {
+    icon: catalogIcon(entry),
+    mass: entry.mass ?? (profile ? profile.gm / 6.6743e-20 : fallbackMass),
+    radius: entry.radius ?? profile?.radius ?? fallbackRadius,
+    illustrative: (!entry.mass || !entry.radius) && !profile,
+    heading: 90,
+    speed: 1,
+  };
+}

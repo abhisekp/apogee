@@ -482,9 +482,7 @@ wa-number-input::part(input) { font-size: 0.8rem; font-variant-numeric: tabular-
 .scene-toolbar kbd { margin-inline-start: 0.35em; font-size: 0.72rem; opacity: 0.8; }
 
 .scene-placement { width: min(100%, 900px); display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-#place-object { touch-action: none; user-select: none; }
-#place-object[hidden], #spacetime-view[hidden] { display: none; }
-#place-object::part(base) { cursor: grab; }
+#spacetime-view[hidden] { display: none; }
 #scene[data-placing] { cursor: crosshair; }
 
 .flight-game { width: min(100%, 900px); padding: 12px; border: 1px solid #7866da; border-radius: 14px; background: #211d42; }
@@ -516,3 +514,9 @@ wa-number-input::part(input) { font-size: 0.8rem; font-variant-numeric: tabular-
 .advanced-settings { width: min(100%, 900px); }
 .advanced-settings .controls, .advanced-settings .hud-panel, .advanced-settings .object-launcher { width: 100%; }
 .sr-game { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+.flight-tray .catalog-tile::part(base) { background: #174052; border-color: #62c5d5; }
+.flight-tray .catalog-tile-name { display: block; max-width: 78px; overflow: hidden; text-overflow: ellipsis; font-size: .63rem; }
+.palette-entry-icon { display: inline-block; font-size: 1.15rem; margin-inline-end: .42em; }
+#catalog-tray-status:empty { display: none; }
+#catalog-tray-status { text-align: center; }

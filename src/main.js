@@ -2,7 +2,7 @@ import { stepSimulation, classifyOutcome, orbitalElements, circularOrbitVelocity
 import { bodies, transferDefaults, TRANSFER_STEP, moonPosition, stepTransfer, transferOutcome, projectTransfer } from "./bodies.js";
 import { launchObject, MAX_OBJECTS, stepObjects } from "./objects.js";
 import { createWells, drawSpacetime } from "./spacetime.js";
-import { catalog, searchEntries } from "./catalog.js";
+import { catalog, searchEntries, catalogIcon, catalogDefaults } from "./catalog.js";
 import { aimedVelocity, projectTrajectory, SIM_DT } from "./projection.js";
 import { dragDistance, clampToMaxDistance, launchVelocity } from "./input.js";
 import { buildHudReadout } from "./hud.js";
@@ -88,9 +88,7 @@ const extraObjects = [];
 const objectForm = document.getElementById("object-form");
 const objectList = document.getElementById("object-list");
 const objectStatus = document.getElementById("object-status");
-const placeObject = document.getElementById("place-object");
 const placementStatus = document.getElementById("placement-status");
-let placing = false;
 let stagedLaunch = null;
 let aimPointer = null;
 let nextPathRefresh = 0;
@@ -140,8 +138,6 @@ function clearObjects() {
   objectAccumulator = 0;
   objectStatus.textContent = "";
   placementStatus.textContent = "";
-  placeObject.hidden = true;
-  setPlacement(false);
   refreshObjectList();
 }
 
@@ -213,12 +209,13 @@ function addObject(event, drop, toy = null) {
   const id = nextObjectId++;
   const name = toy ? `${toy.name} ${id}` : objectField("name").value?.trim().slice(0, 28) || `Object ${id}`;
   const object = launchObject({ id, name, mass, radius, distance: body.radius + altitude, speed, position, heading, time: objectTime });
-  object.icon = toy?.icon;
+  object.icon = toy?.icon ?? (editingCatalogTile?.name === name ? editingCatalogTile.icon : null);
   object.prediction = predictExtra(object);
   object.color = objectColors[(id - 1) % objectColors.length];
   object.trail = [{ x: object.x, y: object.y }];
   extraObjects.push(object);
   if (!toy) {
+    editingCatalogTile = null;
     objectField("name").value = "";
     objectField("position").value = (position + 45 + 360) % 360;
   } else {
@@ -226,10 +223,6 @@ function addObject(event, drop, toy = null) {
   }
   objectStatus.textContent = `${name} added.`;
   if (drop && !toy) placementStatus.textContent = `${name} placed in orbit.`;
-  if (!toy) {
-    placeObject.hidden = true;
-    setPlacement(false);
-  }
   refreshObjectList();
   setPhase(phase);
   setFitPath(true);
@@ -896,7 +889,7 @@ function manualZoom(scale) {
 }
 
 function startGesture(event) {
-  if (event.button !== 0 || pointerGesture || placing || stagedLaunch) return;
+  if (event.button !== 0 || pointerGesture || stagedLaunch) return;
   const rect = canvas.getBoundingClientRect();
   const scale = viewScale(rect.width, rect.height);
   const x = event.clientX - rect.left - rect.width / 2;
@@ -983,6 +976,7 @@ function loadProfile(id, override) {
   const oldGM = gm;
   const oldRadius = body.radius;
   profileId = id;
+  editingCatalogTile = null;
   body = isTransfer() ? transfer.earth : override ? { ...bodies[id] } : profiles[id];
   if (override?.altitude !== undefined) body.altitude = override.altitude;
   if (override?.gm !== undefined) body.gm = override.gm;
@@ -1085,32 +1079,11 @@ function wirePalette() {
   ];
 
   function focusObjectForm(field) {
+    editingCatalogTile = null;
     document.querySelector(".advanced-settings").open = true;
     objectForm.closest("wa-details").open = true;
     objectForm.scrollIntoView({ block: "center", behavior: "instant" });
     objectField(field).focus();
-  }
-
-  function prepareObject(entry, stage = false) {
-    const profile = entry.profile ? bodies[entry.profile] : null;
-    const mass = profile ? profile.gm / 6.6743e-20 : entry.mass;
-    const radius = profile?.radius ?? entry.radius;
-    objectField("name").value = entry.name;
-    objectField("mass").value = mass ?? null;
-    objectField("radius").value = radius ?? null;
-    if (stage && !isTransfer() && mass != null && radius != null) {
-      objectField("height").value = Math.max(body.altitude, radius * 1.1);
-      placeObject.textContent = `✦ Drag ${entry.name} into space`;
-      placeObject.hidden = false;
-      placementStatus.textContent = "Drag this tile into the scene, or select it and click the scene.";
-      placeObject.focus();
-      return;
-    }
-    objectStatus.textContent = entry.mass == null || entry.radius == null
-      ? `${entry.name}: enter the missing mass or collision radius before launching.`
-      : `${entry.name} loaded. Review the launch settings before launching.`;
-    if (isTransfer()) objectStatus.textContent += " Select a single central body before launching.";
-    focusObjectForm(entry.mass == null ? "mass" : entry.radius == null ? "radius" : "speed");
   }
 
   function activate(index) {
@@ -1121,9 +1094,7 @@ function wirePalette() {
       count.textContent = `${entry.name} is a reference entry. Compact-object physics is outside the current model.`;
       return;
     }
-    onClose = entry.run ?? (mode === "add" ? () => prepareObject(entry, true) : entry.profile
-      ? () => { clearPreset(); loadProfile(entry.profile); }
-      : () => prepareObject(entry));
+    onClose = entry.run ?? (() => pinCatalogEntry(entry));
     dialog.open = false;
   }
 
@@ -1148,12 +1119,18 @@ function wirePalette() {
       button.setAttribute("size", "small");
       const name = document.createElement("span");
       name.className = "palette-entry-name";
-      name.textContent = entry.name;
+      if (!entry.run) {
+        const icon = document.createElement("span");
+        icon.className = "palette-entry-icon";
+        icon.setAttribute("aria-hidden", "true");
+        icon.textContent = catalogIcon(entry);
+        name.append(icon);
+      }
+      name.append(entry.name);
       const info = document.createElement("span");
       info.className = "palette-entry-info";
-      const label = entry.referenceOnly ? "Reference only" : entry.profile ? (mode === "add" ? "Place in the scene" : "Use as central body") :
-        entry.run ? "" : entry.mass != null && entry.radius != null ?
-          `${entry.mass.toExponential(3)} kg · radius ${entry.radius} km` : "Complete missing values before launch";
+      const label = entry.referenceOnly ? "Reference only" : entry.run ? "" :
+        catalogDefaults(entry, bodies).illustrative ? "Add to tray · illustrative defaults" : "Add to tray";
       info.textContent = [entry.category, label, entry.note].filter(Boolean).join(" · ");
       button.append(name, info);
       button.addEventListener("click", () => activate(index));
@@ -1207,12 +1184,6 @@ function wirePalette() {
       open("catalog");
     }
   });
-}
-
-function setPlacement(active) {
-  placing = active;
-  canvas.toggleAttribute("data-placing", active || Boolean(stagedLaunch));
-  placeObject.setAttribute("aria-pressed", String(active));
 }
 
 function wireDragTile(button, icon, tap, drop) {
@@ -1290,8 +1261,10 @@ function updateStagedPrediction() {
 }
 
 function stageExtra(x, y, toy) {
-  setPlacement(false);
-  if (isTransfer()) return;
+  if (isTransfer()) {
+    placementStatus.textContent = "Switch to a single central body to launch objects.";
+    return;
+  }
   if (extraObjects.length >= MAX_OBJECTS) {
     placementStatus.textContent = "Remove an object before adding another.";
     return;
@@ -1306,7 +1279,7 @@ function stageExtra(x, y, toy) {
   const altitude = Math.max(radius + Math.max(body.radius * 0.1, 1e-6), Math.hypot(point.x, point.y) - body.radius);
   stagedLaunch = {
     radius, altitude, position: Math.atan2(-point.y, point.x) * 180 / Math.PI,
-    heading: toy?.heading ?? 90, speed: circularOrbitVelocity(body.radius + altitude, gm) * (toy?.speed ?? 1), toy,
+    heading: toy?.heading ?? 90, speed: toy?.customSpeed ?? Math.min(100000, circularOrbitVelocity(body.radius + altitude, gm) * (toy?.speed ?? 1)), toy,
   };
   document.getElementById("aimed-controls").hidden = false;
   canvas.setAttribute("data-placing", "");
@@ -1319,7 +1292,7 @@ function cancelStagedLaunch() {
   stagedLaunch = null;
   aimPointer = null;
   document.getElementById("aimed-controls").hidden = true;
-  canvas.toggleAttribute("data-placing", placing);
+  canvas.removeAttribute("data-placing");
 }
 
 function fireStagedLaunch() {
@@ -1358,18 +1331,10 @@ function drawStagedLaunch(scale) {
 }
 
 function wirePlacement() {
-  const stage = (x, y) => stageExtra(x, y, null);
-  wireDragTile(placeObject, "🪐", () => {
-    setPlacement(!placing);
-    placementStatus.textContent = placing ? "Click the scene to place the object." : "Drag this tile into the scene.";
-  }, stage);
   for (const tile of document.querySelectorAll("[data-toy]")) {
     const toy = quickToys[tile.dataset.toy];
     wireDragTile(tile, toy.icon, () => addObject(null, null, toy), (x, y) => stageExtra(x, y, toy));
   }
-  canvas.addEventListener("click", event => {
-    if (placing) stage(event.clientX, event.clientY);
-  });
   canvas.addEventListener("pointerdown", event => {
     if (!stagedLaunch || event.button !== 0 || !event.isPrimary) return;
     aimPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
@@ -1401,7 +1366,6 @@ function wirePlacement() {
   });
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
-    if (placing) setPlacement(false);
     if (stagedLaunch) {
       cancelStagedLaunch();
       placementStatus.textContent = "";
@@ -1409,7 +1373,71 @@ function wirePlacement() {
   });
 }
 
+const catalogTiles = new Map();
+let editingCatalogTile = null;
+
+function configureCatalogTile(tile) {
+  editingCatalogTile = tile;
+  const altitude = Math.max(tile.customAltitude ?? body.altitude, tile.radius * 1.15);
+  objectField("name").value = tile.name;
+  objectField("mass").value = tile.mass;
+  objectField("radius").value = tile.radius;
+  objectField("height").value = altitude;
+  objectField("speed").value = tile.customSpeed ?? Math.min(100000, circularOrbitVelocity(body.radius + altitude, gm));
+  objectField("heading").value = tile.heading;
+  document.querySelector(".advanced-settings").open = true;
+  objectForm.closest("wa-details").open = true;
+  objectStatus.textContent = `${tile.name} settings · Changes apply to future launches from this tile.`;
+  objectForm.scrollIntoView({ block: "center", behavior: "instant" });
+}
+
+function updateCatalogTile(event) {
+  if (!editingCatalogTile) return;
+  const keys = { mass: ["mass", 1e-18, 1e33], radius: ["radius", 1e-9, 1e7],
+    height: ["customAltitude", 1e-9, 1e8], speed: ["customSpeed", 0, 100000], heading: ["heading", -180, 180] };
+  const key = event.target.id?.replace("object-", "");
+  if (!Object.hasOwn(keys, key)) return;
+  const [property, min, max] = keys[key];
+  const raw = event.target.value;
+  const value = Number(raw);
+  if (raw != null && raw !== "" && Number.isFinite(value) && value >= min && value <= max) {
+    editingCatalogTile[property] = value;
+  }
+}
+
+function pinCatalogEntry(entry) {
+  const existing = catalogTiles.get(entry.name);
+  if (existing) {
+    existing.focus();
+    return;
+  }
+  const toy = { name: entry.name, ...catalogDefaults(entry, bodies) };
+  const tile = document.createElement("wa-button");
+  tile.className = "catalog-tile";
+  tile.setAttribute("type", "button");
+  tile.setAttribute("aria-label", `Configure ${toy.name}`);
+  tile.setAttribute("title", `Drag to aim and launch ${toy.name}, or click to edit`);
+  const content = document.createElement("div");
+  const icon = document.createElement("span");
+  icon.textContent = toy.icon;
+  icon.setAttribute("aria-hidden", "true");
+  const label = document.createElement("small");
+  label.className = "catalog-tile-name";
+  label.textContent = toy.name;
+  content.append(icon, label);
+  tile.append(content);
+  document.querySelector(".flight-tray").append(tile);
+  catalogTiles.set(entry.name, tile);
+  wireDragTile(tile, toy.icon, () => configureCatalogTile(toy), (x, y) => stageExtra(x, y, toy));
+  tile.scrollIntoView({ block: "nearest" });
+  tile.focus();
+  document.getElementById("catalog-tray-status").textContent = isTransfer()
+    ? `${toy.icon} ${toy.name} added. Switch to a single central body to launch it.`
+    : `${toy.icon} ${toy.name} added. Drag to aim or click to edit${toy.illustrative ? " · illustrative defaults" : ""}.`;
+}
+
 function wireControls() {
+  objectForm.addEventListener("change", updateCatalogTile);
   wirePalette();
   wirePlacement();
   collisionControl.addEventListener("change", syncCollisionControls);
