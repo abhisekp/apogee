@@ -32,6 +32,8 @@
   </header>
   <main class="stage">
     <div class="scene-toolbar" aria-label="Scene controls">
+      <wa-button id="open-catalog" type="button" appearance="outlined" size="small">Search objects <kbd>/</kbd></wa-button>
+      <wa-button id="open-commands" type="button" appearance="outlined" size="small">Commands <kbd>Ctrl/⌘ K</kbd></wa-button>
       <wa-button type="button" size="small" id="mute-toggle">Mute sound</wa-button>
       <wa-button id="reset-button" type="button" appearance="outlined" size="small">Reset scene</wa-button>
       <div id="reset-confirmation" class="reset-confirmation" hidden>
@@ -67,7 +69,7 @@
     <wa-details class="object-launcher" summary="Add orbiting objects" open>
       <form id="object-form" class="object-form" novalidate>
         <wa-input id="object-name" label="Name" size="small" maxlength="28" placeholder="Object name"></wa-input>
-        <wa-number-input without-steppers id="object-mass" label="Mass (kg)" size="small" min="1" max="1000000000000000000000000000000" step="1" required value="1000"></wa-number-input>
+        <wa-number-input without-steppers id="object-mass" label="Mass (kg)" size="small" min="0.000000000000000001" max="1000000000000000000000000000000" step="1" required value="1000"></wa-number-input>
         <wa-number-input without-steppers id="object-radius" label="Radius (km)" size="small" min="0.000000001" step="0.000000001" required value="0.1"></wa-number-input>
         <wa-number-input without-steppers id="object-height" label="Launch altitude (km)" size="small" min="0.000000001" step="0.000000001" required value="20"></wa-number-input>
         <wa-number-input without-steppers id="object-speed" label="Launch speed (km/s)" size="small" min="0" step="0.000000001" required value="8.16"></wa-number-input>
@@ -180,6 +182,12 @@
   <footer class="site-footer">
     <p>real two-body gravity, simulated in your browser · no install, no accounts</p>
   </footer>
+  <wa-dialog id="quick-palette" label="Search objects">
+    <wa-input id="palette-query" type="search" label="Search by name or category" autofocus></wa-input>
+    <p id="palette-count" class="aim-help" role="status"></p>
+    <div id="palette-results" class="palette-results" aria-label="Search results"></div>
+    <p slot="footer" class="palette-keys">↑ ↓ Navigate · Enter Select · Esc Close</p>
+  </wa-dialog>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>

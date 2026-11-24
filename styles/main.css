@@ -468,3 +468,33 @@ wa-number-input::part(input) { font-size: 0.8rem; font-variant-numeric: tabular-
 
 .spacetime-view strong { color: var(--text); }
 #spacetime-grid { display: block; width: 100%; height: clamp(220px, 44vw, 330px); }
+
+#quick-palette {
+  --width: min(640px, calc(100vw - 32px));
+}
+
+#palette-count { margin: 12px 0 6px; }
+
+.palette-results {
+  display: grid;
+  gap: 4px;
+  max-height: min(50vh, 440px);
+  overflow: auto;
+}
+
+.palette-results wa-button::part(base) {
+  width: 100%;
+  justify-content: start;
+  text-align: left;
+  white-space: normal;
+}
+
+.palette-results wa-button[data-active]::part(base) {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+.palette-entry-name, .palette-entry-info { display: block; }
+.palette-entry-info { color: var(--text-muted); font-size: 0.76rem; }
+.palette-keys { margin: 0; color: var(--text-muted); font-size: 0.78rem; }
+.scene-toolbar kbd { margin-inline-start: 0.35em; font-size: 0.72rem; opacity: 0.8; }

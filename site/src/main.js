@@ -2,6 +2,7 @@ import { stepSimulation, classifyOutcome, orbitalElements, circularOrbitVelocity
 import { bodies, transferDefaults, TRANSFER_STEP, moonPosition, stepTransfer, transferOutcome, projectTransfer } from "./bodies.js";
 import { launchObject, MAX_OBJECTS, stepObjects } from "./objects.js";
 import { createWells, drawSpacetime } from "./spacetime.js";
+import { catalog, searchEntries } from "./catalog.js";
 import { aimedVelocity, projectTrajectory, SIM_DT } from "./projection.js";
 import { dragDistance, clampToMaxDistance, launchVelocity } from "./input.js";
 import { buildHudReadout } from "./hud.js";
@@ -149,7 +150,7 @@ function addObject(event) {
     return value === "" || value == null ? NaN : Number(value);
   });
   if (![mass, radius, altitude, speed, position, heading].every(Number.isFinite) ||
-      mass < 1 || mass > 1e30 || radius < 1e-9 || radius > body.radius / 3 ||
+      mass < 1e-18 || mass > 1e30 || radius < 1e-9 || radius > body.radius / 3 ||
       altitude <= radius || altitude > 1e8 || speed < 0 || speed > 100000 || Math.abs(position) > 360 || Math.abs(heading) > 180) {
     objectStatus.textContent = "Use a positive mass, a radius up to one third of the central body, and a launch altitude greater than the object’s radius. Check that speed and angles are in range.";
     return;
@@ -932,7 +933,147 @@ function applyPreset() {
   presetDescription.textContent = preset.description;
 }
 
+function wirePalette() {
+  const dialog = document.getElementById("quick-palette");
+  const query = document.getElementById("palette-query");
+  const count = document.getElementById("palette-count");
+  const results = document.getElementById("palette-results");
+  let mode = "catalog";
+  let active = 0;
+  let matches = [];
+  let onClose = null;
+
+  const commands = [
+    { name: "Search objects", category: "Catalog · /", run: () => open("catalog"), switchesMode: true },
+    { name: "Launch satellite", category: "Simulation", run: () => {
+      const velocity = currentAim();
+      if (phase === "idle" && velocity) launchSatellite(velocity);
+      else if (phase === "idle") aimForm.reportValidity();
+    } },
+    { name: "Add an orbiting object", category: "Simulation", run: () => focusObjectForm("name") },
+    { name: "Pause or resume", category: "Playback", run: () => controls["pause-flight"].click() },
+    { name: "Step simulation", category: "Playback", run: () => controls["step-flight"].click() },
+    { name: "Replay launch", category: "Playback", run: () => controls["replay-flight"].click() },
+    { name: "Fit path", category: "Camera", run: () => fitButton.click() },
+    { name: "Show or hide spacetime", category: "View", run: () => spacetimeToggle.click() },
+    { name: "Mute or unmute sound", category: "Audio", run: () => muteButton.click() },
+    { name: "Reset scene", category: "Simulation · opens confirmation", run: () => resetButton.click() },
+  ];
+
+  function focusObjectForm(field) {
+    objectForm.closest("wa-details").open = true;
+    objectForm.scrollIntoView({ block: "center", behavior: "instant" });
+    objectField(field).focus();
+  }
+
+  function prepareObject(entry) {
+    objectField("name").value = entry.name;
+    objectField("mass").value = entry.mass ?? null;
+    objectField("radius").value = entry.radius ?? null;
+    objectStatus.textContent = entry.mass == null || entry.radius == null
+      ? `${entry.name}: enter the missing mass or collision radius before launching.`
+      : `${entry.name} loaded. Review the launch settings before launching.`;
+    if (isTransfer()) objectStatus.textContent += " Select a single central body before launching.";
+    focusObjectForm(entry.mass == null ? "mass" : entry.radius == null ? "radius" : "speed");
+  }
+
+  function activate(index) {
+    const entry = matches[index];
+    if (!entry) return;
+    if (entry.switchesMode) return entry.run();
+    if (entry.referenceOnly) {
+      count.textContent = `${entry.name} is a reference entry. Compact-object physics is outside the current model.`;
+      return;
+    }
+    onClose = entry.run ?? (entry.profile
+      ? () => { clearPreset(); loadProfile(entry.profile); }
+      : () => prepareObject(entry));
+    dialog.open = false;
+  }
+
+  function setActive(index, scroll) {
+    if (!matches.length) return;
+    results.children[active]?.removeAttribute("data-active");
+    active = (index + matches.length) % matches.length;
+    const row = results.children[active];
+    row.setAttribute("data-active", "");
+    if (scroll) row.scrollIntoView({ block: "nearest" });
+  }
+
+  function renderResults() {
+    matches = searchEntries(mode === "catalog" ? catalog : commands, query.value || "");
+    active = 0;
+    results.replaceChildren();
+    count.textContent = `${matches.length} ${mode === "catalog" ? "of 100 objects" : "commands"}`;
+    matches.forEach((entry, index) => {
+      const button = document.createElement("wa-button");
+      button.setAttribute("type", "button");
+      button.setAttribute("appearance", "plain");
+      button.setAttribute("size", "small");
+      const name = document.createElement("span");
+      name.className = "palette-entry-name";
+      name.textContent = entry.name;
+      const info = document.createElement("span");
+      info.className = "palette-entry-info";
+      const label = entry.referenceOnly ? "Reference only" : entry.profile ? "Use as central body" :
+        entry.run ? "" : entry.mass != null && entry.radius != null ?
+          `${entry.mass.toExponential(3)} kg · radius ${entry.radius} km` : "Complete missing values before launch";
+      info.textContent = [entry.category, label, entry.note].filter(Boolean).join(" · ");
+      button.append(name, info);
+      button.addEventListener("click", () => activate(index));
+      results.append(button);
+    });
+    setActive(0, false);
+    results.scrollTop = 0;
+  }
+
+  function open(nextMode) {
+    mode = nextMode;
+    const title = mode === "catalog" ? "Search objects" : "Run a command";
+    dialog.label = title;
+    query.label = mode === "catalog" ? "Search by name or category" : "Search commands";
+    query.value = "";
+    renderResults();
+    if (dialog.open) query.focus();
+    else dialog.open = true;
+  }
+
+  document.getElementById("open-catalog").addEventListener("click", () => open("catalog"));
+  document.getElementById("open-commands").addEventListener("click", () => open("commands"));
+  dialog.addEventListener("wa-after-show", () => query.focus());
+  dialog.addEventListener("wa-after-hide", () => {
+    const action = onClose;
+    onClose = null;
+    action?.();
+  });
+  query.addEventListener("input", renderResults);
+  query.addEventListener("keydown", event => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(active + (event.key === "ArrowDown" ? 1 : -1), true);
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      activate(active);
+    }
+  });
+  document.addEventListener("keydown", event => {
+    if (event.defaultPrevented || event.repeat || event.altKey || event.isComposing) return;
+    const modified = event.ctrlKey || event.metaKey;
+    const target = event.composedPath()[0];
+    const editing = target?.isContentEditable || target?.matches?.("input, textarea, select, wa-input, wa-number-input");
+    if (modified && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      open("commands");
+    } else if (event.key === "/" && (modified || (!editing && !dialog.open))) {
+      event.preventDefault();
+      open("catalog");
+    }
+  });
+}
+
 function wireControls() {
+  wirePalette();
   spacetimeToggle.addEventListener("click", () => {
     spacetimeView.hidden = !spacetimeView.hidden;
     spacetimeToggle.textContent = spacetimeView.hidden ? "Show spacetime" : "Hide spacetime";
