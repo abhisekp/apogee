@@ -1,6 +1,7 @@
 import { stepSimulation, classifyOutcome, orbitalElements, circularOrbitVelocity, escapeVelocity } from "./physics.js";
 import { bodies, transferDefaults, TRANSFER_STEP, moonPosition, stepTransfer, transferOutcome, projectTransfer } from "./bodies.js";
 import { launchObject, MAX_OBJECTS, stepObjects } from "./objects.js";
+import { createWells, drawSpacetime } from "./spacetime.js";
 import { aimedVelocity, projectTrajectory, SIM_DT } from "./projection.js";
 import { dragDistance, clampToMaxDistance, launchVelocity } from "./input.js";
 import { buildHudReadout } from "./hud.js";
@@ -26,6 +27,10 @@ const hudOrbitCount = document.getElementById("hud-orbit-count");
 const gravitySlider = document.getElementById("gravity-slider");
 const gravityValue = document.getElementById("gravity-value");
 const muteButton = document.getElementById("mute-toggle");
+const spacetimeView = document.getElementById("spacetime-view");
+const spacetimeToggle = document.getElementById("spacetime-toggle");
+const spacetimeCanvas = document.getElementById("spacetime-grid");
+let lastSpacetimeFrame = -Infinity;
 const resetButton = document.getElementById("reset-button");
 
 const playback = document.getElementById("playback-speed");
@@ -729,6 +734,15 @@ function render() {
   updateHud();
 }
 
+function renderSpacetime() {
+  const moon = isTransfer() ? {
+    ...moonPosition(satellite?.time ?? 0, transfer),
+    radius: transfer.moon.radius,
+    gm: transfer.moon.gm,
+  } : null;
+  drawSpacetime(spacetimeCanvas, createWells(body, extraObjects, moon));
+}
+
 function frame(timestamp) {
   if (lastFrameTime === null) lastFrameTime = timestamp;
   const rawDt = Math.min(MAX_FRAME_DT, (timestamp - lastFrameTime) / 1000);
@@ -744,6 +758,10 @@ function frame(timestamp) {
   }
 
   render();
+  if (!spacetimeView.hidden && timestamp - lastSpacetimeFrame >= 40) {
+    renderSpacetime();
+    lastSpacetimeFrame = timestamp;
+  }
   requestAnimationFrame(frame);
 }
 
@@ -915,6 +933,12 @@ function applyPreset() {
 }
 
 function wireControls() {
+  spacetimeToggle.addEventListener("click", () => {
+    spacetimeView.hidden = !spacetimeView.hidden;
+    spacetimeToggle.textContent = spacetimeView.hidden ? "Show spacetime" : "Hide spacetime";
+    spacetimeToggle.setAttribute("aria-pressed", String(!spacetimeView.hidden));
+    if (!spacetimeView.hidden) renderSpacetime();
+  });
   objectForm.addEventListener("submit", addObject);
   presetSelect.addEventListener("change", applyPreset);
   controls["body-profile"].addEventListener("change", () => {

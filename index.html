@@ -54,7 +54,16 @@
 
     <div class="scene-launch">
       <wa-button type="submit" form="aim-controls" variant="brand" id="launch-button">Launch</wa-button>
+      <wa-button type="button" id="spacetime-toggle" appearance="outlined" aria-controls="spacetime-view" aria-pressed="false">Show spacetime</wa-button>
     </div>
+    <figure class="spacetime-view" id="spacetime-view" hidden>
+      <figcaption>
+        <strong>Gravity wells</strong>
+        <span>Deeper wells show stronger gravity. Small wells are exaggerated so you can see them move with the objects.</span>
+      </figcaption>
+      <canvas id="spacetime-grid" aria-label="Tilted grid showing the moving gravity wells of the central body and other massive objects"></canvas>
+      <p class="aim-help">This is a Newtonian gravity analogy. The grid’s depth is illustrative and does not show relativistic spacetime curvature.</p>
+    </figure>
     <wa-details class="object-launcher" summary="Add orbiting objects" open>
       <form id="object-form" class="object-form" novalidate>
         <wa-input id="object-name" label="Name" size="small" maxlength="28" placeholder="Object name"></wa-input>
