@@ -450,24 +450,6 @@ wa-number-input::part(input) { font-size: 0.8rem; font-variant-numeric: tabular-
 
 .scene-launch { flex-wrap: wrap; gap: var(--space-2); }
 
-.spacetime-view {
-  width: min(100%, 900px);
-  margin: 0;
-  padding: var(--space-3);
-  background: var(--surface-2);
-  border: 1px solid rgba(77, 216, 232, 0.28);
-  border-radius: var(--radius);
-}
-
-.spacetime-view figcaption {
-  display: grid;
-  gap: var(--space-1);
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.spacetime-view strong { color: var(--text); }
-#spacetime-grid { display: block; width: 100%; height: clamp(220px, 44vw, 330px); }
 
 #quick-palette {
   --width: min(640px, calc(100vw - 32px));
@@ -523,3 +505,9 @@ body[data-kids] .about, body[data-kids] .masthead .tagline { display: none; }
 #kids-canvas { display: block; width: 100%; height: clamp(270px, 55vw, 460px); }
 .kids-feedback { text-align: center; font-size: 1.1rem; min-height: 1.5em; margin-bottom: 0; }
 .kids-ghost { position: fixed; z-index: 9999; pointer-events: none; font-size: 3rem; transform: translate(-50%, -50%); }
+
+.scene-placement { width: min(100%, 900px); display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+#place-object { touch-action: none; user-select: none; }
+#place-object[hidden], #spacetime-view[hidden] { display: none; }
+#place-object::part(base) { cursor: grab; }
+#scene[data-placing] { cursor: crosshair; }

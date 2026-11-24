@@ -1,6 +1,10 @@
 # Apogee
 
-**▶ Live demo — [apps.charliekrug.com/escape-velocity](https://apps.charliekrug.com/escape-velocity/)**
+**▶ Live app — [Apogee](https://apogee.app.abhisekp.com/)** · **[Kids Mode](https://apogee.app.abhisekp.com/?mode=kids)**
+
+Kids Mode uses picture tiles and supports tapping or dragging toys into space. Orbit Lab includes trajectory comparison, a searchable 100-object catalog, and a live gravity grid. Use **Add object** to choose a body and place it on the canvas.
+
+**Original project demo — [apps.charliekrug.com/escape-velocity](https://apps.charliekrug.com/escape-velocity/)**
 
 An orbital mechanics simulator you play in one drag. Pull a satellite off a tiny planet, let
 go, and watch real two-body gravity decide what happens next: it arcs back and crashes in a

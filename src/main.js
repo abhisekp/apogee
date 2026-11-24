@@ -31,8 +31,6 @@ const gravityValue = document.getElementById("gravity-value");
 const muteButton = document.getElementById("mute-toggle");
 const spacetimeView = document.getElementById("spacetime-view");
 const spacetimeToggle = document.getElementById("spacetime-toggle");
-const spacetimeCanvas = document.getElementById("spacetime-grid");
-let lastSpacetimeFrame = -Infinity;
 const resetButton = document.getElementById("reset-button");
 
 const playback = document.getElementById("playback-speed");
@@ -91,6 +89,9 @@ const extraObjects = [];
 const objectForm = document.getElementById("object-form");
 const objectList = document.getElementById("object-list");
 const objectStatus = document.getElementById("object-status");
+const placeObject = document.getElementById("place-object");
+const placementStatus = document.getElementById("placement-status");
+let placing = false;
 const resetConfirmation = document.getElementById("reset-confirmation");
 const objectColors = ["#f8c576", "#ffa1c9", "#a8ed9d", "#c9afff", "#ff9e7b", "#7ce4ff"];
 let nextObjectId = 1;
@@ -132,11 +133,14 @@ function clearObjects() {
   objectTime = 0;
   objectAccumulator = 0;
   objectStatus.textContent = "";
+  placementStatus.textContent = "";
+  placeObject.hidden = true;
+  setPlacement(false);
   refreshObjectList();
 }
 
-function addObject(event) {
-  event.preventDefault();
+function addObject(event, drop) {
+  event?.preventDefault();
   if (isTransfer()) {
     objectStatus.textContent = "Select a single central body to add objects.";
     return;
@@ -146,14 +150,24 @@ function addObject(event) {
     return;
   }
   const fields = ["mass", "radius", "height", "speed", "position", "heading"];
-  const [mass, radius, altitude, speed, position, heading] = fields.map(key => {
+  let [mass, radius, altitude, speed, position, heading] = fields.map(key => {
     const value = objectField(key).value;
     return value === "" || value == null ? NaN : Number(value);
   });
+  if (drop && Number.isFinite(radius) && radius > 0) {
+    const { left, top, width, height } = canvas.getBoundingClientRect();
+    const scale = viewScale(width, height);
+    const x = (drop.x - left - width / 2 - cameraX) / scale;
+    const y = (drop.y - top - height / 2 - cameraY) / scale;
+    position = Math.atan2(-y, x) * 180 / Math.PI;
+    altitude = Math.max(radius + Math.max(body.radius * 0.1, 1e-6), Math.hypot(x, y) - body.radius);
+    speed = circularOrbitVelocity(body.radius + altitude, gm);
+    heading = 90;
+  }
   if (![mass, radius, altitude, speed, position, heading].every(Number.isFinite) ||
-      mass < 1e-18 || mass > 1e30 || radius < 1e-9 || radius > body.radius / 3 ||
+      mass < 1e-18 || mass > 1e33 || radius < 1e-9 || radius > 1e7 ||
       altitude <= radius || altitude > 1e8 || speed < 0 || speed > 100000 || Math.abs(position) > 360 || Math.abs(heading) > 180) {
-    objectStatus.textContent = "Use a positive mass, a radius up to one third of the central body, and a launch altitude greater than the object’s radius. Check that speed and angles are in range.";
+    objectStatus.textContent = "Use a positive mass, a radius up to 10 million km, and a launch altitude greater than the object’s radius. Check that speed and angles are in range.";
     return;
   }
 
@@ -166,6 +180,9 @@ function addObject(event) {
   objectField("name").value = "";
   objectField("position").value = (position + 45 + 360) % 360;
   objectStatus.textContent = `${name} added.`;
+  if (drop) placementStatus.textContent = `${name} placed in orbit.`;
+  placeObject.hidden = true;
+  setPlacement(false);
   refreshObjectList();
   setPhase(phase);
   setFitPath(true);
@@ -338,6 +355,8 @@ function viewScale(width, height) {
       x = Math.max(x, Math.abs(point.x));
       y = Math.max(y, Math.abs(point.y));
     }
+    x = Math.max(x, Math.abs(object.x) + object.radius);
+    y = Math.max(y, Math.abs(object.y) + object.radius);
   }
   return Math.min(2.5 * baselineScale(), width * 0.44 / x, height * 0.44 / y);
 }
@@ -663,7 +682,7 @@ function drawExtraObjects(scale) {
     });
     ctx.stroke();
     ctx.beginPath();
-    const size = Math.min(7, Math.max(2, object.radius * scale)) / scale;
+    const size = Math.min(100, Math.max(2, object.radius * scale)) / scale;
     ctx.arc(object.x, object.y, size, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
@@ -715,8 +734,14 @@ function drawDragIndicator(cx, cy, scale) {
 function render() {
   const { cx, cy, width, height } = center();
   ctx.clearRect(0, 0, width, height);
-  drawGrid(width, height);
   const scale = viewScale(width, height);
+  if (scale > 0 && !spacetimeView.hidden) {
+    const camera = { x: cx + cameraX, y: cy + cameraY, scale };
+    const moon = isTransfer() ? { ...moonPosition(satellite?.time ?? 0, transfer), radius: transfer.moon.radius, gm: transfer.moon.gm } : null;
+    drawSpacetime(ctx, width, height, createWells(body, extraObjects, moon, camera), camera);
+  } else {
+    drawGrid(width, height);
+  }
   const readout = `${Math.round(scale / baselineScale() * 100)}%`;
   if (zoomValue.textContent !== readout) zoomValue.textContent = readout;
   ctx.save();
@@ -734,15 +759,6 @@ function render() {
   drawSatellite(0, 0, scale);
   ctx.restore();
   updateHud();
-}
-
-function renderSpacetime() {
-  const moon = isTransfer() ? {
-    ...moonPosition(satellite?.time ?? 0, transfer),
-    radius: transfer.moon.radius,
-    gm: transfer.moon.gm,
-  } : null;
-  drawSpacetime(spacetimeCanvas, createWells(body, extraObjects, moon));
 }
 
 function frame(timestamp) {
@@ -765,10 +781,6 @@ function frame(timestamp) {
   }
 
   render();
-  if (!spacetimeView.hidden && timestamp - lastSpacetimeFrame >= 40) {
-    renderSpacetime();
-    lastSpacetimeFrame = timestamp;
-  }
   requestAnimationFrame(frame);
 }
 
@@ -784,7 +796,7 @@ function manualZoom(scale) {
 }
 
 function startGesture(event) {
-  if (event.button !== 0 || pointerGesture) return;
+  if (event.button !== 0 || pointerGesture || placing) return;
   const rect = canvas.getBoundingClientRect();
   const scale = viewScale(rect.width, rect.height);
   const x = event.clientX - rect.left - rect.width / 2;
@@ -950,6 +962,7 @@ function wirePalette() {
   let onClose = null;
 
   const commands = [
+    { name: "Place an object on the canvas", category: "Simulation", run: () => open("add") },
     { name: "Search objects", category: "Catalog · /", run: () => open("catalog"), switchesMode: true },
     { name: "Launch satellite", category: "Simulation", run: () => {
       const velocity = currentAim();
@@ -972,10 +985,21 @@ function wirePalette() {
     objectField(field).focus();
   }
 
-  function prepareObject(entry) {
+  function prepareObject(entry, stage = false) {
+    const profile = entry.profile ? bodies[entry.profile] : null;
+    const mass = profile ? profile.gm / 6.6743e-20 : entry.mass;
+    const radius = profile?.radius ?? entry.radius;
     objectField("name").value = entry.name;
-    objectField("mass").value = entry.mass ?? null;
-    objectField("radius").value = entry.radius ?? null;
+    objectField("mass").value = mass ?? null;
+    objectField("radius").value = radius ?? null;
+    if (stage && !isTransfer() && mass != null && radius != null) {
+      objectField("height").value = Math.max(body.altitude, radius * 1.1);
+      placeObject.textContent = `✦ Drag ${entry.name} into space`;
+      placeObject.hidden = false;
+      placementStatus.textContent = "Drag this tile into the scene, or select it and click the scene.";
+      placeObject.focus();
+      return;
+    }
     objectStatus.textContent = entry.mass == null || entry.radius == null
       ? `${entry.name}: enter the missing mass or collision radius before launching.`
       : `${entry.name} loaded. Review the launch settings before launching.`;
@@ -991,7 +1015,7 @@ function wirePalette() {
       count.textContent = `${entry.name} is a reference entry. Compact-object physics is outside the current model.`;
       return;
     }
-    onClose = entry.run ?? (entry.profile
+    onClose = entry.run ?? (mode === "add" ? () => prepareObject(entry, true) : entry.profile
       ? () => { clearPreset(); loadProfile(entry.profile); }
       : () => prepareObject(entry));
     dialog.open = false;
@@ -1007,10 +1031,10 @@ function wirePalette() {
   }
 
   function renderResults() {
-    matches = searchEntries(mode === "catalog" ? catalog : commands, query.value || "");
+    matches = searchEntries(mode === "commands" ? commands : catalog, query.value || "");
     active = 0;
     results.replaceChildren();
-    count.textContent = `${matches.length} ${mode === "catalog" ? "of 100 objects" : "commands"}`;
+    count.textContent = `${matches.length} ${mode === "commands" ? "commands" : "of 100 objects"}`;
     matches.forEach((entry, index) => {
       const button = document.createElement("wa-button");
       button.setAttribute("type", "button");
@@ -1021,7 +1045,7 @@ function wirePalette() {
       name.textContent = entry.name;
       const info = document.createElement("span");
       info.className = "palette-entry-info";
-      const label = entry.referenceOnly ? "Reference only" : entry.profile ? "Use as central body" :
+      const label = entry.referenceOnly ? "Reference only" : entry.profile ? (mode === "add" ? "Place in the scene" : "Use as central body") :
         entry.run ? "" : entry.mass != null && entry.radius != null ?
           `${entry.mass.toExponential(3)} kg · radius ${entry.radius} km` : "Complete missing values before launch";
       info.textContent = [entry.category, label, entry.note].filter(Boolean).join(" · ");
@@ -1035,15 +1059,16 @@ function wirePalette() {
 
   function open(nextMode) {
     mode = nextMode;
-    const title = mode === "catalog" ? "Search objects" : "Run a command";
+    const title = mode === "add" ? "Add object to scene" : mode === "catalog" ? "Search objects" : "Run a command";
     dialog.label = title;
-    query.label = mode === "catalog" ? "Search by name or category" : "Search commands";
+    query.label = mode === "commands" ? "Search commands" : "Search by name or category";
     query.value = "";
     renderResults();
     if (dialog.open) query.focus();
     else dialog.open = true;
   }
 
+  document.getElementById("open-placement-catalog").addEventListener("click", () => open("add"));
   document.getElementById("open-catalog").addEventListener("click", () => open("catalog"));
   document.getElementById("open-commands").addEventListener("click", () => open("commands"));
   dialog.addEventListener("wa-after-show", () => query.focus());
@@ -1078,13 +1103,80 @@ function wirePalette() {
   });
 }
 
+function setPlacement(active) {
+  placing = active;
+  canvas.toggleAttribute("data-placing", active);
+  placeObject.setAttribute("aria-pressed", String(active));
+}
+
+function wirePlacement() {
+  let dragStart = null;
+  let ghost = null;
+  let suppressClick = false;
+
+  function cleanDrag() {
+    dragStart = null;
+    ghost?.remove();
+    ghost = null;
+  }
+
+  function drop(x, y) {
+    setPlacement(false);
+    addObject(null, { x, y });
+  }
+
+  placeObject.addEventListener("click", event => {
+    if (suppressClick && event.detail) return;
+    setPlacement(!placing);
+    placementStatus.textContent = placing ? "Click the scene to place the object." : "Drag this tile into the scene.";
+  });
+  placeObject.addEventListener("pointerdown", event => {
+    if (event.button !== 0 || !event.isPrimary) return;
+    suppressClick = false;
+    dragStart = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    placeObject.setPointerCapture(event.pointerId);
+  });
+  placeObject.addEventListener("pointermove", event => {
+    if (dragStart?.id !== event.pointerId) return;
+    if (!ghost && Math.hypot(event.clientX - dragStart.x, event.clientY - dragStart.y) > 8) {
+      ghost = document.createElement("span");
+      ghost.className = "kids-ghost";
+      ghost.textContent = "🪐";
+      ghost.setAttribute("aria-hidden", "true");
+      document.body.append(ghost);
+    }
+    if (!ghost) return;
+    ghost.style.left = `${event.clientX}px`;
+    ghost.style.top = `${event.clientY}px`;
+  });
+  placeObject.addEventListener("pointerup", event => {
+    if (dragStart?.id !== event.pointerId) return;
+    if (ghost) {
+      suppressClick = true;
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX, y = event.clientY;
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) drop(x, y);
+    }
+    cleanDrag();
+  });
+  placeObject.addEventListener("pointercancel", cleanDrag);
+  placeObject.addEventListener("lostpointercapture", cleanDrag);
+  canvas.addEventListener("click", event => {
+    if (placing) drop(event.clientX, event.clientY);
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && placing) setPlacement(false);
+  });
+}
+
 function wireControls() {
   wirePalette();
+  wirePlacement();
   spacetimeToggle.addEventListener("click", () => {
     spacetimeView.hidden = !spacetimeView.hidden;
     spacetimeToggle.textContent = spacetimeView.hidden ? "Show spacetime" : "Hide spacetime";
     spacetimeToggle.setAttribute("aria-pressed", String(!spacetimeView.hidden));
-    if (!spacetimeView.hidden) renderSpacetime();
+    render();
   });
   objectForm.addEventListener("submit", addObject);
   presetSelect.addEventListener("change", applyPreset);
