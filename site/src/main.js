@@ -225,7 +225,7 @@ function addObject(event, drop, toy = null) {
   if (drop && !toy) placementStatus.textContent = `${name} placed in orbit.`;
   refreshObjectList();
   setPhase(phase);
-  setFitPath(true);
+  if (!manualCamera) setFitPath(true);
 }
 
 function announceCollision(first, second, mode) {
@@ -329,11 +329,13 @@ let dragOrigin = null;
 let projection = null;
 let zoom = 1;
 let fitPath = false;
+let manualCamera = false;
 let cameraX = 0;
 let cameraY = 0;
 let pointerGesture = null;
 const MIN_ZOOM = 0.1;
-const MAX_ZOOM = 2.5;
+const MAX_FIT_ZOOM = 2.5;
+const MAX_ZOOM = 16;
 let minimumZoom = MIN_ZOOM;
 let physicsTime = 0;
 let traceStep = 0;
@@ -400,6 +402,7 @@ function setFitPath(enabled) {
     cameraY = 0;
   }
   fitPath = enabled;
+  manualCamera = !enabled;
   fitButton.setAttribute("aria-pressed", String(enabled));
 }
 
@@ -429,7 +432,7 @@ function viewScale(width, height) {
     x = Math.max(x, Math.abs(object.x) + object.radius);
     y = Math.max(y, Math.abs(object.y) + object.radius);
   }
-  return Math.min(2.5 * baselineScale(), width * 0.44 / x, height * 0.44 / y);
+  return Math.min(MAX_FIT_ZOOM * baselineScale(), width * 0.44 / x, height * 0.44 / y);
 }
 
 function setPhase(next) {
@@ -1308,7 +1311,7 @@ function stageExtra(x, y, toy) {
   canvas.setAttribute("data-placing", "");
   placementStatus.textContent = "✋ ➜ ➶ Drag in the scene to aim, then release.";
   updateStagedPrediction();
-  setFitPath(true);
+  if (!manualCamera) setFitPath(true);
 }
 
 function cancelStagedLaunch() {
