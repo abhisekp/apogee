@@ -31,6 +31,14 @@
     <p class="tagline">drag a satellite off a tiny planet: crash, orbit, or escape</p>
   </header>
   <main class="stage">
+    <div class="scene-toolbar" aria-label="Scene reset">
+      <wa-button id="reset-button" type="button" appearance="outlined" size="small">Reset scene</wa-button>
+      <div id="reset-confirmation" class="reset-confirmation" hidden>
+        <span>Clear the current flight, added objects, and comparison?</span>
+        <wa-button id="confirm-reset" type="button" variant="danger" size="small">Clear scene</wa-button>
+        <wa-button id="cancel-reset" type="button" size="small">Cancel</wa-button>
+      </div>
+    </div>
     <div class="stage-canvas-wrap" id="canvas-wrap">
       <canvas id="scene" aria-label="Orbital simulation canvas"></canvas>
       <div class="outcome-overlay" id="outcome-overlay" hidden>
@@ -43,6 +51,21 @@
       </div>
     </div>
 
+    <wa-details class="object-launcher" summary="Add orbiting objects" open>
+      <form id="object-form" class="object-form" novalidate>
+        <wa-input id="object-name" label="Name" size="small" maxlength="28" placeholder="Object name"></wa-input>
+        <wa-number-input id="object-mass" label="Mass (kg)" size="small" min="1" max="1000000000000000000000000000000" step="1" required value="1000"></wa-number-input>
+        <wa-number-input id="object-radius" label="Radius (km)" size="small" min="0.000000001" step="0.000000001" required value="0.1"></wa-number-input>
+        <wa-number-input id="object-height" label="Launch altitude (km)" size="small" min="0.000000001" step="0.000000001" required value="20"></wa-number-input>
+        <wa-number-input id="object-speed" label="Launch speed (km/s)" size="small" min="0" step="0.000000001" required value="8.16"></wa-number-input>
+        <wa-number-input id="object-position" label="Starting position (°)" size="small" min="-360" max="360" step="1" required value="45"></wa-number-input>
+        <wa-number-input id="object-heading" label="Launch angle (°)" size="small" min="-180" max="180" step="0.1" required value="90"></wa-number-input>
+        <wa-button type="submit" variant="brand" size="small">Add and launch</wa-button>
+      </form>
+      <p class="aim-help">Add up to 12 objects without interrupting the main launch. Added objects attract each other and merge on contact. Their size also determines when they hit the central body. Available in single-body modes. The central body stays fixed. Starting position places the object around the body. A 90° launch aims sideways. Switching to different central-body settings clears added objects.</p>
+      <p class="aim-help" id="object-status" role="status"></p>
+      <ul id="object-list" class="object-list" aria-label="Added objects"></ul>
+    </wa-details>
     <div class="hud-panel">
       <dl class="hud-grid" id="hud-grid">
         <div class="hud-item"><dt>velocity</dt><dd id="hud-velocity">—</dd></div>
@@ -142,7 +165,6 @@
       </wa-details>
       <div class="control-buttons">
         <wa-button type="button" size="small" id="mute-toggle">Mute sound</wa-button>
-        <wa-button type="button" size="small" id="reset-button">Reset</wa-button>
       </div>
     </div>
   </main>

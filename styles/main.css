@@ -420,3 +420,19 @@ wa-select, wa-number-input { width: 145px; }
   gap: var(--space-2) var(--space-3);
   flex-wrap: wrap;
 }
+
+.scene-toolbar, .object-launcher { width: min(100%, 900px); }
+.scene-toolbar { display: flex; justify-content: flex-end; gap: 12px; }
+.reset-confirmation:not([hidden]), .object-form, .object-list li {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.reset-confirmation { align-items: center; }
+.object-form { margin-bottom: 12px; }
+.object-form wa-number-input, .object-form wa-input { width: min(100%, 145px); }
+.object-launcher .aim-help { margin-top: 8px; }
+.object-list { list-style: none; margin: 10px 0 0; padding: 0; }
+.object-list:empty { display: none; }
+.object-list li { align-items: center; justify-content: space-between; padding-block: 5px; }

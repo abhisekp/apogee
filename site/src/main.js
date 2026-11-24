@@ -1,5 +1,6 @@
 import { stepSimulation, classifyOutcome, orbitalElements, circularOrbitVelocity, escapeVelocity } from "./physics.js";
 import { bodies, transferDefaults, TRANSFER_STEP, moonPosition, stepTransfer, transferOutcome, projectTransfer } from "./bodies.js";
+import { launchObject, MAX_OBJECTS, stepObjects } from "./objects.js";
 import { aimedVelocity, projectTrajectory, SIM_DT } from "./projection.js";
 import { dragDistance, clampToMaxDistance, launchVelocity } from "./input.js";
 import { buildHudReadout } from "./hud.js";
@@ -79,6 +80,114 @@ const transfer = { ...transferDefaults, earth: { ...transferDefaults.earth }, mo
 let profileId = "sandbox";
 let body = profiles.sandbox;
 let gm = body.gm;
+const extraObjects = [];
+const objectForm = document.getElementById("object-form");
+const objectList = document.getElementById("object-list");
+const objectStatus = document.getElementById("object-status");
+const resetConfirmation = document.getElementById("reset-confirmation");
+const objectColors = ["#f8c576", "#ffa1c9", "#a8ed9d", "#c9afff", "#ff9e7b", "#7ce4ff"];
+let nextObjectId = 1;
+let objectTime = 0;
+let objectAccumulator = 0;
+const flyingObjects = () => extraObjects.some(object => object.status === "Flying");
+const objectField = name => document.getElementById("object-" + name);
+
+function syncObjectDefaults() {
+  objectField("radius").value = +Math.min(body.radius / 100, 0.1).toPrecision(5);
+  objectField("height").value = body.altitude;
+  objectField("speed").value = Number(aimSpeed.value) || circularOrbitVelocity(launchRadius(), gm);
+}
+
+function refreshObjectList() {
+  objectList.replaceChildren();
+  for (const object of extraObjects) {
+    const item = document.createElement("li");
+    const label = document.createElement("span");
+    label.style.color = object.color;
+    label.textContent = `${object.name} · ${object.mass.toLocaleString(undefined, { notation: "compact" })} kg · radius ${Number(object.radius.toPrecision(4))} km · ${object.status}`;
+    const remove = document.createElement("wa-button");
+    remove.setAttribute("size", "small");
+    remove.setAttribute("type", "button");
+    remove.textContent = `Remove ${object.name}`;
+    remove.addEventListener("click", () => {
+      extraObjects.splice(extraObjects.indexOf(object), 1);
+      refreshObjectList();
+      setPhase(phase);
+    });
+    item.append(label, remove);
+    objectList.append(item);
+  }
+}
+
+function clearObjects() {
+  extraObjects.length = 0;
+  nextObjectId = 1;
+  objectTime = 0;
+  objectAccumulator = 0;
+  objectStatus.textContent = "";
+  refreshObjectList();
+}
+
+function addObject(event) {
+  event.preventDefault();
+  if (isTransfer()) {
+    objectStatus.textContent = "Select a single central body to add objects.";
+    return;
+  }
+  if (extraObjects.length >= MAX_OBJECTS) {
+    objectStatus.textContent = "Remove an object before adding another.";
+    return;
+  }
+  const fields = ["mass", "radius", "height", "speed", "position", "heading"];
+  const [mass, radius, altitude, speed, position, heading] = fields.map(key => {
+    const value = objectField(key).value;
+    return value === "" || value == null ? NaN : Number(value);
+  });
+  if (![mass, radius, altitude, speed, position, heading].every(Number.isFinite) ||
+      mass < 1 || mass > 1e30 || radius < 1e-9 || radius > body.radius / 3 ||
+      altitude <= radius || altitude > 1e8 || speed < 0 || speed > 100000 || Math.abs(position) > 360 || Math.abs(heading) > 180) {
+    objectStatus.textContent = "Use a positive mass, a radius up to one third of the central body, and a launch altitude greater than the object’s radius. Check that speed and angles are in range.";
+    return;
+  }
+
+  const id = nextObjectId++;
+  const name = objectField("name").value?.trim().slice(0, 28) || `Object ${id}`;
+  const object = launchObject({ id, name, mass, radius, distance: body.radius + altitude, speed, position, heading, time: objectTime });
+  object.color = objectColors[(id - 1) % objectColors.length];
+  object.trail = [{ x: object.x, y: object.y }];
+  extraObjects.push(object);
+  objectField("name").value = "";
+  objectField("position").value = (position + 45 + 360) % 360;
+  objectStatus.textContent = `${name} added.`;
+  refreshObjectList();
+  setPhase(phase);
+  setFitPath(true);
+}
+
+function advanceObjects(dt) {
+  if (!flyingObjects()) return;
+  const step = physicsStep();
+  objectAccumulator = Math.min(objectAccumulator + dt, step * 300);
+  const statuses = extraObjects.map(object => object.status);
+  let advanced = false;
+  while (objectAccumulator >= step && flyingObjects()) {
+    stepObjects(extraObjects, step, { body, boundary: profileId === "sandbox" ? Math.max(500, escapeRadius()) : escapeRadius() });
+    objectTime += step;
+    objectAccumulator -= step;
+    advanced = true;
+  }
+  if (advanced) {
+    extraObjects.forEach((object, i) => {
+      if (statuses[i] !== "Flying") return;
+      object.trail.push({ x: object.x, y: object.y });
+      if (object.trail.length > 420) object.trail.shift();
+    });
+  }
+  if (extraObjects.some((object, i) => object.status !== statuses[i])) {
+    refreshObjectList();
+    setPhase(phase);
+  }
+}
 let paused = false;
 let lastVelocity = null;
 let comparison = null;
@@ -217,16 +326,23 @@ function viewScale(width, height) {
     x = Math.max(x, Math.abs(satellite.x));
     y = Math.max(y, Math.abs(satellite.y));
   }
+  for (const object of extraObjects) {
+    for (const point of object.trail) {
+      x = Math.max(x, Math.abs(point.x));
+      y = Math.max(y, Math.abs(point.y));
+    }
+  }
   return Math.min(2.5 * baselineScale(), width * 0.44 / x, height * 0.44 / y);
 }
 
 function setPhase(next) {
   phase = next;
   const inRun = phase === "flying" || phase === "resolved";
-  gravitySlider.disabled = inRun || profileId !== "sandbox";
-  for (const id of ["body-radius", "body-gm", "launch-altitude", "moon-radius", "moon-gm", "moon-distance", "moon-phase"]) controls[id].disabled = inRun;
-  controls["pause-flight"].disabled = phase !== "flying";
-  controls["step-flight"].disabled = phase !== "flying" || !paused;
+  const extrasFlying = flyingObjects();
+  gravitySlider.disabled = inRun || extrasFlying || profileId !== "sandbox";
+  for (const id of ["body-radius", "body-gm", "launch-altitude", "moon-radius", "moon-gm", "moon-distance", "moon-phase"]) controls[id].disabled = inRun || extrasFlying;
+  controls["pause-flight"].disabled = phase !== "flying" && !extrasFlying;
+  controls["step-flight"].disabled = !paused || (phase !== "flying" && !extrasFlying);
   controls["replay-flight"].disabled = !lastVelocity;
   aimSpeed.disabled = aimAngle.disabled = launchButton.disabled = inRun;
 }
@@ -442,20 +558,21 @@ function drawLaunchPad(cx, cy, scale) {
 }
 
 function drawPlanet(cx, cy, scale) {
-  const glow = ctx.createRadialGradient(cx, cy, body.radius * 0.4, cx, cy, body.radius * 2.2);
+  const displayRadius = Math.max(body.radius, 10 / scale);
+  const glow = ctx.createRadialGradient(cx, cy, displayRadius * 0.4, cx, cy, displayRadius * 2.2);
   const rimColor = outcome === "crash" ? "255, 82, 82" : "77, 216, 232";
   glow.addColorStop(0, `rgba(${rimColor}, 0.35)`);
   glow.addColorStop(1, `rgba(${rimColor}, 0)`);
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(cx, cy, body.radius * 2.2, 0, Math.PI * 2);
+  ctx.arc(cx, cy, displayRadius * 2.2, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = "#0f1f38";
   ctx.strokeStyle = outcome === "crash" ? "#ff5252" : "#4dd8e8";
   ctx.lineWidth = 2 / scale;
   ctx.beginPath();
-  ctx.arc(cx, cy, body.radius, 0, Math.PI * 2);
+  ctx.arc(cx, cy, displayRadius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 }
@@ -525,11 +642,32 @@ function drawOverlays(scale) {
   }
 }
 
+function drawExtraObjects(scale) {
+  for (const object of extraObjects) {
+    if (object.status.startsWith("Merged")) continue;
+    ctx.save();
+    ctx.strokeStyle = object.color;
+    ctx.fillStyle = object.color;
+    ctx.lineWidth = 1.5 / scale;
+    ctx.beginPath();
+    object.trail.forEach((point, i) => {
+      if (i === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    });
+    ctx.stroke();
+    ctx.beginPath();
+    const size = Math.min(7, Math.max(2, object.radius * scale)) / scale;
+    ctx.arc(object.x, object.y, size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawSatellite(cx, cy, scale) {
   if (!satellite) return;
   ctx.fillStyle = "#ff6b4a";
   ctx.beginPath();
-  ctx.arc(cx + satellite.x, cy + satellite.y, 6 / scale, 0, Math.PI * 2);
+  ctx.arc(cx + satellite.x, cy + satellite.y, 4 / scale, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -585,6 +723,7 @@ function render() {
   drawOverlays(scale);
   drawParticles(0, 0);
   drawDragIndicator(0, 0, scale);
+  drawExtraObjects(scale);
   drawSatellite(0, 0, scale);
   ctx.restore();
   updateHud();
@@ -599,7 +738,8 @@ function frame(timestamp) {
   if (phase === "flying" && !paused) {
     stepPhysics(dt);
   }
-  if (!reducedMotion && particles.length) {
+  if (!paused) advanceObjects(dt);
+  if (!paused && !reducedMotion && particles.length) {
     particles = updateParticles(particles, dt);
   }
 
@@ -702,11 +842,17 @@ function syncPlayback() {
 
 function loadProfile(id, override) {
   if (!Object.hasOwn(profiles, id) && id !== "transfer") return;
+  const oldId = profileId;
+  const oldGM = gm;
+  const oldRadius = body.radius;
   profileId = id;
   body = isTransfer() ? transfer.earth : override ? { ...bodies[id] } : profiles[id];
   if (override?.altitude !== undefined) body.altitude = override.altitude;
   if (override?.gm !== undefined) body.gm = override.gm;
   gm = body.gm;
+  if (oldId !== id || oldGM !== gm || oldRadius !== body.radius) clearObjects();
+  objectForm.querySelector("[type=submit]").disabled = isTransfer();
+  if (isTransfer()) objectStatus.textContent = "Select a single central body to add objects.";
   controls["body-profile"].value = id;
   controls["transfer-fields"].hidden = !isTransfer();
   controls["body-radius"].value = body.radius;
@@ -717,6 +863,7 @@ function loadProfile(id, override) {
   updateSpeedRange();
   aimSpeed.value = override?.speed ?? (isTransfer() ? 10.92 : Math.min(body.speed, Number(aimSpeed.max)));
   aimAngle.value = override?.angle ?? 90;
+  syncObjectDefaults();
   syncPlayback();
   playback.value = isTransfer() ? "24000" : id === "sandbox" ? "3" : "2400";
   controls["body-note"].textContent = isTransfer()
@@ -768,6 +915,7 @@ function applyPreset() {
 }
 
 function wireControls() {
+  objectForm.addEventListener("submit", addObject);
   presetSelect.addEventListener("change", applyPreset);
   controls["body-profile"].addEventListener("change", () => {
     clearPreset();
@@ -775,13 +923,15 @@ function wireControls() {
   });
   for (const id of ["body-radius", "body-gm", "launch-altitude", "moon-radius", "moon-gm", "moon-distance", "moon-phase"]) controls[id].addEventListener("change", editBody);
   controls["pause-flight"].addEventListener("click", () => {
-    if (phase !== "flying") return;
+    if (phase !== "flying" && !flyingObjects()) return;
     paused = !paused;
     controls["pause-flight"].textContent = paused ? "Resume" : "Pause";
     setPhase(phase);
   });
   controls["step-flight"].addEventListener("click", () => {
-    if (phase === "flying" && paused) stepPhysics(physicsStep());
+    if (!paused) return;
+    if (phase === "flying") stepPhysics(physicsStep());
+    advanceObjects(physicsStep());
   });
   controls["replay-flight"].addEventListener("click", () => {
     if (!lastVelocity) return;
@@ -858,8 +1008,23 @@ function wireControls() {
   });
 
   resetButton.addEventListener("click", () => {
+    resetConfirmation.hidden = !resetConfirmation.hidden;
+    if (!resetConfirmation.hidden) document.getElementById("cancel-reset").focus();
+  });
+  const closeReset = () => {
+    resetConfirmation.hidden = true;
+    resetButton.focus();
+  };
+  document.getElementById("cancel-reset").addEventListener("click", closeReset);
+  document.getElementById("confirm-reset").addEventListener("click", () => {
     audio.playUiClick();
+    clearObjects();
+    comparison = null;
+    lastVelocity = null;
+    setFitPath(true);
     resetScene();
+    syncObjectDefaults();
+    closeReset();
   });
 
   launchAnotherBtn.addEventListener("click", () => {
