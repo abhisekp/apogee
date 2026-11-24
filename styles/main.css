@@ -497,3 +497,22 @@ wa-number-input::part(input) { font-size: 0.8rem; font-variant-numeric: tabular-
 .flight-goals [data-done] { color: #93edc0; }
 .flight-feedback { color: #e0d7ff; font-size: .85rem; }
 .flight-ghost { position: fixed; z-index: 9999; pointer-events: none; font-size: 2.5rem; transform: translate(-50%, -50%); }
+
+.collision-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 10px 16px; margin-top: 10px; }
+.collision-controls wa-select { width: min(100%, 185px); }
+.collision-controls wa-checkbox { padding-block: 6px; }
+#goal-collision[data-done] { color: #93edc0; }
+
+.aimed-controls:not([hidden]) { width: min(100%, 900px); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #fff1a3; }
+
+.flight-tray { justify-content: center; }
+.flight-tray wa-button::part(base) { width: clamp(56px, 15vw, 85px); height: clamp(55px, 14vw, 73px); padding: 0; border-radius: 14px; }
+.flight-tray wa-button span { font-size: clamp(1.7rem, 7vw, 2.65rem); margin: 0; }
+.visual-steps { text-align: center; font-size: 1.25rem; margin: 6px 0 0; }
+.flight-goals { justify-content: center; }
+.flight-goals > span { background: #121025; border-radius: 9px; padding: 4px 9px; opacity: .55; }
+.flight-goals > [data-done] { opacity: 1; background: #204248; }
+.flight-feedback { text-align: center; }
+.advanced-settings { width: min(100%, 900px); }
+.advanced-settings .controls, .advanced-settings .hud-panel, .advanced-settings .object-launcher { width: 100%; }
+.sr-game { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

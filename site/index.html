@@ -115,16 +115,18 @@
     </div>
     <section class="flight-game" aria-label="Flight challenges">
       <div class="flight-tray" aria-label="Quick launch">
-        <wa-button type="button" data-toy="satellite" aria-label="Launch satellite"><span aria-hidden="true">🛰️</span> Satellite</wa-button>
-        <wa-button type="button" data-toy="rocket" aria-label="Launch rocket"><span aria-hidden="true">🚀</span> Rocket</wa-button>
-        <wa-button type="button" data-toy="rock" aria-label="Launch space rock"><span aria-hidden="true">🪨</span> Rock</wa-button>
-        <wa-button type="button" data-toy="ball" aria-label="Launch ball"><span aria-hidden="true">⚽</span> Ball</wa-button>
+        <wa-button type="button" data-toy="satellite" aria-label="Launch satellite"><span aria-hidden="true">🛰️</span></wa-button>
+        <wa-button type="button" data-toy="rocket" aria-label="Launch rocket"><span aria-hidden="true">🚀</span></wa-button>
+        <wa-button type="button" data-toy="rock" aria-label="Launch space rock"><span aria-hidden="true">🪨</span></wa-button>
+        <wa-button type="button" data-toy="ball" aria-label="Launch ball"><span aria-hidden="true">⚽</span></wa-button>
       </div>
-      <p class="aim-help" id="flight-hint">Tap a tile to launch, or drag it into the scene to choose where it starts.</p>
+      <p class="visual-steps" aria-label="Tap a picture to launch, or drag it onto the grid to aim"><span aria-hidden="true">👆 ➜ 🚀 &nbsp; · &nbsp; ✋ ➜ 🌍 ➜ ➶</span></p>
+      <p class="aim-help sr-game" id="flight-hint">Tap a tile for a quick launch, or drop it into the scene to aim by dragging.</p>
       <div class="flight-goals" aria-label="Flight goals">
-        <span id="goal-orbit">◯ Orbit</span><span id="goal-crash">◯ Impact</span><span id="goal-escape">◯ Escape</span>
+        <span id="goal-orbit" aria-label="Orbit goal">🌀</span><span id="goal-crash" aria-label="Impact goal">💥</span><span id="goal-escape" aria-label="Escape goal">⭐</span>
         <strong id="flight-score">🏆 0 points</strong>
       </div>
+      <p id="collision-feedback" class="aim-help" role="status"></p>
       <p id="flight-feedback" class="flight-feedback" role="status">Try all three flight goals.</p>
     </section>
     <div class="scene-placement">
@@ -144,11 +146,29 @@
       </div>
     </div>
 
+    <div id="aimed-controls" class="aimed-controls" hidden>
+      <span id="aimed-summary"></span>
+      <wa-button id="fire-aimed" type="button" size="small" variant="brand" aria-label="Launch aimed object">🚀</wa-button>
+      <wa-button id="cancel-aimed" type="button" size="small" aria-label="Cancel aim">✕</wa-button>
+    </div>
+
     <div class="scene-launch">
       <wa-button type="submit" form="aim-controls" variant="brand" id="launch-button">Launch</wa-button>
       <wa-button type="button" id="spacetime-toggle" appearance="outlined" aria-controls="spacetime-view" aria-pressed="false">Show spacetime</wa-button>
     </div>
     <p class="aim-help" id="spacetime-view" hidden>Gravity grid · Wells move with the bodies. Small wells are exaggerated. This is an illustration of gravity, not a general relativity simulation.</p>
+    <wa-details class="advanced-settings" summary="⚙️ Advanced settings">
+      <p class="aim-help">Colored dashed paths estimate motion under central gravity. Close encounters and collisions can change the path.</p>
+      <div class="collision-controls" aria-label="Object collisions">
+        <wa-select id="collision-mode" label="Object collisions" value="off" size="small">
+          <wa-option value="off">Off · pass through</wa-option>
+          <wa-option value="bounce">Bounce</wa-option>
+          <wa-option value="merge">Merge</wa-option>
+        </wa-select>
+        <wa-checkbox id="collision-rewards" disabled>Collision challenge (+75 points)</wa-checkbox>
+        <wa-button id="collision-demo" type="button" size="small" disabled>Try a head-on encounter</wa-button>
+        <span id="goal-collision" hidden>◯ Collision</span>
+      </div>
     <wa-details class="object-launcher" summary="Add orbiting objects" open>
       <form id="object-form" class="object-form" novalidate>
         <wa-input id="object-name" label="Name" size="small" maxlength="28" placeholder="Object name"></wa-input>
@@ -160,7 +180,7 @@
         <wa-number-input without-steppers id="object-heading" label="Launch angle (°)" size="small" min="-180" max="180" step="0.1" required value="90"></wa-number-input>
         <wa-button type="submit" variant="brand" size="small">Add and launch</wa-button>
       </form>
-      <p class="aim-help">Add up to 12 objects without interrupting the main launch. Added objects attract each other and merge on contact. Their size also determines when they hit the central body. Available in single-body modes. The central body stays fixed. Starting position places the object around the body. A 90° launch aims sideways. Switching to different central-body settings clears added objects. To place an object on the canvas, use Add object above the scene.</p>
+      <p class="aim-help">Add up to 12 objects without interrupting the main launch. Added objects attract each other. Turn on Object collisions to make added objects bounce or merge on contact. The main trajectory preview remains a separate launch. Their size also determines when they hit the central body. Available in single-body modes. The central body stays fixed. Starting position places the object around the body. A 90° launch aims sideways. Switching to different central-body settings clears added objects. To place an object on the canvas, use Add object above the scene.</p>
       <p class="aim-help" id="object-status" role="status"></p>
       <ul id="object-list" class="object-list" aria-label="Added objects"></ul>
     </wa-details>
@@ -261,6 +281,7 @@
         <article><h3>Apollo 8 · 1968</h3><p>Explore departure from Earth. Select Earth–Moon transfer to see a separate, idealized lunar flyby with both bodies pulling on the spacecraft.</p><a href="https://www.nasa.gov/missions/apollo/apollo-8-mission-details/">NASA mission details</a></article>
       </wa-details>
     </div>
+    </wa-details>
   </main>
 
   <section class="about" aria-labelledby="about-heading">

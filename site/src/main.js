@@ -91,6 +91,10 @@ const objectStatus = document.getElementById("object-status");
 const placeObject = document.getElementById("place-object");
 const placementStatus = document.getElementById("placement-status");
 let placing = false;
+let stagedLaunch = null;
+let aimPointer = null;
+let nextPathRefresh = 0;
+let pathCursor = 0;
 const resetConfirmation = document.getElementById("reset-confirmation");
 const objectColors = ["#f8c576", "#ffa1c9", "#a8ed9d", "#c9afff", "#ff9e7b", "#7ce4ff"];
 let nextObjectId = 1;
@@ -128,6 +132,9 @@ function refreshObjectList() {
 
 function clearObjects() {
   extraObjects.length = 0;
+  cancelStagedLaunch();
+  collisionFlash = null;
+  collisionFeedback.textContent = "";
   nextObjectId = 1;
   objectTime = 0;
   objectAccumulator = 0;
@@ -148,7 +155,13 @@ const flightGoals = {
   orbit: { icon: "🌀", label: "Orbit", points: 100 },
   crash: { icon: "💥", label: "Impact", points: 25 },
   escape: { icon: "⭐", label: "Escape", points: 50 },
+  collision: { icon: "💫", label: "Collision", points: 75 },
 };
+const collisionControl = document.getElementById("collision-mode");
+const collisionRewards = document.getElementById("collision-rewards");
+const collisionDemo = document.getElementById("collision-demo");
+const collisionFeedback = document.getElementById("collision-feedback");
+let collisionFlash = null;
 const unlockedGoals = new Set();
 let flightScore = 0;
 
@@ -158,11 +171,12 @@ function scoreFlight(kind) {
   flightScore += goal.points;
   unlockedGoals.add(kind);
   const badge = document.getElementById("goal-" + kind);
-  badge.textContent = `✓ ${goal.label}`;
+  badge.textContent = `${goal.icon} ✓`;
+  badge.setAttribute("aria-label", `${goal.label} goal complete`);
   badge.dataset.done = "";
   document.getElementById("flight-score").textContent = `🏆 ${flightScore} points`;
   document.getElementById("flight-feedback").textContent =
-    `${goal.icon} ${goal.label}! +${goal.points}${unlockedGoals.size === 3 ? " · All three flight goals complete!" : ""}`;
+    `${goal.icon} ${goal.label}! +${goal.points}${["orbit", "crash", "escape"].every(goal => unlockedGoals.has(goal)) ? " · All three flight goals complete!" : ""}`;
 }
 
 function addObject(event, drop, toy = null) {
@@ -184,20 +198,11 @@ function addObject(event, drop, toy = null) {
     mass = toy.mass;
     radius = toy.radius;
     altitude = Math.max(body.altitude, radius * 1.2);
-    position = (nextObjectId * 53) % 360;
+    position = toy.position ?? (nextObjectId * 53) % 360;
     heading = toy.heading;
     speed = circularOrbitVelocity(body.radius + altitude, gm) * toy.speed;
   }
-  if (drop && Number.isFinite(radius) && radius > 0) {
-    const { left, top, width, height } = canvas.getBoundingClientRect();
-    const scale = viewScale(width, height);
-    const x = (drop.x - left - width / 2 - cameraX) / scale;
-    const y = (drop.y - top - height / 2 - cameraY) / scale;
-    position = Math.atan2(-y, x) * 180 / Math.PI;
-    altitude = Math.max(radius + Math.max(body.radius * 0.1, 1e-6), Math.hypot(x, y) - body.radius);
-    speed = circularOrbitVelocity(body.radius + altitude, gm) * (toy?.speed ?? 1);
-    heading = toy?.heading ?? 90;
-  }
+  if (drop) ({ position, altitude, speed, heading } = drop);
   if (![mass, radius, altitude, speed, position, heading].every(Number.isFinite) ||
       mass < 1e-18 || mass > 1e33 || radius < 1e-9 || radius > 1e7 ||
       altitude <= radius || altitude > 1e8 || speed < 0 || speed > 100000 || Math.abs(position) > 360 || Math.abs(heading) > 180) {
@@ -209,6 +214,7 @@ function addObject(event, drop, toy = null) {
   const name = toy ? `${toy.name} ${id}` : objectField("name").value?.trim().slice(0, 28) || `Object ${id}`;
   const object = launchObject({ id, name, mass, radius, distance: body.radius + altitude, speed, position, heading, time: objectTime });
   object.icon = toy?.icon;
+  object.prediction = predictExtra(object);
   object.color = objectColors[(id - 1) % objectColors.length];
   object.trail = [{ x: object.x, y: object.y }];
   extraObjects.push(object);
@@ -229,6 +235,23 @@ function addObject(event, drop, toy = null) {
   setFitPath(true);
 }
 
+function announceCollision(first, second, mode) {
+  collisionFlash = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2, until: performance.now() + 850 };
+  collisionFeedback.textContent = mode === "merge"
+    ? `💫 ${first.name} and ${second.name} merged.`
+    : `💫 ${first.name} and ${second.name} bounced.`;
+  if (collisionRewards.checked) scoreFlight("collision");
+}
+
+function syncCollisionControls() {
+  const available = !isTransfer();
+  const enabled = available && Boolean(collisionControl.value) && collisionControl.value !== "off";
+  collisionControl.disabled = !available;
+  collisionRewards.disabled = !enabled;
+  collisionDemo.disabled = !enabled;
+  document.getElementById("goal-collision").hidden = !enabled || !collisionRewards.checked;
+}
+
 function advanceObjects(dt) {
   if (!flyingObjects()) return;
   const step = physicsStep();
@@ -236,7 +259,10 @@ function advanceObjects(dt) {
   const statuses = extraObjects.map(object => object.status);
   let advanced = false;
   while (objectAccumulator >= step && flyingObjects()) {
-    stepObjects(extraObjects, step, { body, boundary: profileId === "sandbox" ? Math.max(500, escapeRadius()) : escapeRadius() });
+    stepObjects(extraObjects, step, {
+      body, boundary: profileId === "sandbox" ? Math.max(500, escapeRadius()) : escapeRadius(),
+      collisionMode: collisionControl.value, onCollision: announceCollision,
+    });
     objectTime += step;
     objectAccumulator -= step;
     advanced = true;
@@ -392,6 +418,10 @@ function viewScale(width, height) {
       x = Math.max(x, Math.abs(point.x));
       y = Math.max(y, Math.abs(point.y));
     }
+  }
+  if (stagedLaunch?.object) {
+    x = Math.max(x, Math.abs(stagedLaunch.object.x) + stagedLaunch.radius);
+    y = Math.max(y, Math.abs(stagedLaunch.object.y) + stagedLaunch.radius);
   }
   if (satellite) {
     x = Math.max(x, Math.abs(satellite.x));
@@ -734,6 +764,11 @@ function drawExtraObjects(scale) {
   for (const object of extraObjects) {
     if (object.status.startsWith("Merged")) continue;
     ctx.save();
+    if (object.status === "Flying") {
+      ctx.globalAlpha = 0.58;
+      drawPrediction(0, 0, scale, object.prediction, object.color);
+      ctx.globalAlpha = 1;
+    }
     ctx.strokeStyle = object.color;
     ctx.fillStyle = object.color;
     ctx.lineWidth = 1.5 / scale;
@@ -819,6 +854,8 @@ function render() {
   drawParticles(0, 0);
   drawDragIndicator(0, 0, scale);
   drawExtraObjects(scale);
+  drawStagedLaunch(scale);
+  if (collisionFlash && performance.now() < collisionFlash.until) drawFlightIcon("💫", collisionFlash.x, collisionFlash.y, scale, 32);
   drawSatellite(0, 0, scale);
   ctx.restore();
   updateHud();
@@ -834,6 +871,11 @@ function frame(timestamp) {
     stepPhysics(dt);
   }
   if (!paused) advanceObjects(dt);
+  if (!paused && timestamp >= nextPathRefresh && extraObjects.length) {
+    const object = extraObjects[pathCursor++ % extraObjects.length];
+    if (object.status === "Flying") object.prediction = predictExtra(object);
+    nextPathRefresh = timestamp + 110;
+  }
   if (!paused && !reducedMotion && particles.length) {
     particles = updateParticles(particles, dt);
   }
@@ -854,7 +896,7 @@ function manualZoom(scale) {
 }
 
 function startGesture(event) {
-  if (event.button !== 0 || pointerGesture || placing) return;
+  if (event.button !== 0 || pointerGesture || placing || stagedLaunch) return;
   const rect = canvas.getBoundingClientRect();
   const scale = viewScale(rect.width, rect.height);
   const x = event.clientX - rect.left - rect.width / 2;
@@ -947,10 +989,11 @@ function loadProfile(id, override) {
   gm = body.gm;
   if (oldId !== id || oldGM !== gm || oldRadius !== body.radius) clearObjects();
   objectForm.querySelector("[type=submit]").disabled = isTransfer();
+  syncCollisionControls();
   for (const tile of document.querySelectorAll("[data-toy]")) tile.disabled = isTransfer();
   document.getElementById("flight-hint").textContent = isTransfer()
     ? "Use Launch for an Earth–Moon transfer. Quick launch tiles are available with a single central body."
-    : "Tap a tile to launch, or drag it into the scene to choose where it starts.";
+    : "Tap a tile for a quick launch, or drop it into the scene to aim by dragging.";
   if (isTransfer()) objectStatus.textContent = "Select a single central body to add objects.";
   controls["body-profile"].value = id;
   controls["transfer-fields"].hidden = !isTransfer();
@@ -1042,6 +1085,7 @@ function wirePalette() {
   ];
 
   function focusObjectForm(field) {
+    document.querySelector(".advanced-settings").open = true;
     objectForm.closest("wa-details").open = true;
     objectForm.scrollIntoView({ block: "center", behavior: "instant" });
     objectField(field).focus();
@@ -1167,7 +1211,7 @@ function wirePalette() {
 
 function setPlacement(active) {
   placing = active;
-  canvas.toggleAttribute("data-placing", active);
+  canvas.toggleAttribute("data-placing", active || Boolean(stagedLaunch));
   placeObject.setAttribute("aria-pressed", String(active));
 }
 
@@ -1217,30 +1261,169 @@ function wireDragTile(button, icon, tap, drop) {
   button.addEventListener("lostpointercapture", cleanup);
 }
 
-function wirePlacement() {
-  function drop(x, y) {
-    setPlacement(false);
-    addObject(null, { x, y });
+function predictExtra(object) {
+  const surface = body.radius + object.radius;
+  const boundary = Math.max(surface * 1.01, profileId === "sandbox" ? Math.max(500, escapeRadius()) : escapeRadius());
+  return projectTrajectory(object, gm, surface, boundary, physicsStep());
+}
+
+function worldPoint(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const scale = viewScale(rect.width, rect.height);
+  return {
+    x: (clientX - rect.left - rect.width / 2 - cameraX) / scale,
+    y: (clientY - rect.top - rect.height / 2 - cameraY) / scale,
+  };
+}
+
+function updateStagedPrediction() {
+  const launch = stagedLaunch;
+  const object = launchObject({
+    id: 0, name: "", mass: 1, radius: launch.radius, distance: body.radius + launch.altitude,
+    speed: launch.speed, position: launch.position, heading: launch.heading, time: objectTime,
+  });
+  launch.object = object;
+  launch.path = predictExtra(object);
+  const outcome = { orbit: "orbit", crash: "impact", escape: "escape", partial: "partial path" };
+  document.getElementById("aimed-summary").textContent =
+    `${speedText(launch.speed)} km/s · ${launch.heading.toFixed(0)}° · ${outcome[launch.path.outcome]}`;
+}
+
+function stageExtra(x, y, toy) {
+  setPlacement(false);
+  if (isTransfer()) return;
+  if (extraObjects.length >= MAX_OBJECTS) {
+    placementStatus.textContent = "Remove an object before adding another.";
+    return;
   }
+  const radius = toy?.radius ?? Number(objectField("radius").value);
+  const mass = toy?.mass ?? Number(objectField("mass").value);
+  if (!(radius > 0 && mass >= 1e-18)) {
+    placementStatus.textContent = "Enter the object’s mass and radius first.";
+    return;
+  }
+  const point = worldPoint(x, y);
+  const altitude = Math.max(radius + Math.max(body.radius * 0.1, 1e-6), Math.hypot(point.x, point.y) - body.radius);
+  stagedLaunch = {
+    radius, altitude, position: Math.atan2(-point.y, point.x) * 180 / Math.PI,
+    heading: toy?.heading ?? 90, speed: circularOrbitVelocity(body.radius + altitude, gm) * (toy?.speed ?? 1), toy,
+  };
+  document.getElementById("aimed-controls").hidden = false;
+  canvas.setAttribute("data-placing", "");
+  placementStatus.textContent = "✋ ➜ ➶ Drag in the scene to aim, then release.";
+  updateStagedPrediction();
+  setFitPath(true);
+}
+
+function cancelStagedLaunch() {
+  stagedLaunch = null;
+  aimPointer = null;
+  document.getElementById("aimed-controls").hidden = true;
+  canvas.toggleAttribute("data-placing", placing);
+}
+
+function fireStagedLaunch() {
+  if (!stagedLaunch) return;
+  const launch = stagedLaunch;
+  cancelStagedLaunch();
+  addObject(null, launch, launch.toy);
+  if (launch.toy) placementStatus.textContent = "";
+}
+
+function drawStagedLaunch(scale) {
+  if (!stagedLaunch) return;
+  const { object, path, toy } = stagedLaunch;
+  drawPrediction(0, 0, scale, path, "#fff1a3");
+  const circular = circularOrbitVelocity(body.radius + stagedLaunch.altitude, gm);
+  const arrowScale = 48 / (circular * scale);
+  const endX = object.x + object.vx * arrowScale;
+  const endY = object.y + object.vy * arrowScale;
+  ctx.save();
+  ctx.strokeStyle = "#fff1a3";
+  ctx.lineWidth = 2 / scale;
+  ctx.beginPath();
+  ctx.moveTo(object.x, object.y);
+  ctx.lineTo(endX, endY);
+  if (stagedLaunch.speed > 0) {
+    const direction = Math.atan2(object.vy, object.vx);
+    for (const side of [-1, 1]) {
+      ctx.moveTo(endX, endY);
+      ctx.lineTo(endX - 9 * Math.cos(direction + side * 0.48) / scale,
+        endY - 9 * Math.sin(direction + side * 0.48) / scale);
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+  drawFlightIcon(toy?.icon ?? "🪐", object.x, object.y, scale);
+}
+
+function wirePlacement() {
+  const stage = (x, y) => stageExtra(x, y, null);
   wireDragTile(placeObject, "🪐", () => {
     setPlacement(!placing);
     placementStatus.textContent = placing ? "Click the scene to place the object." : "Drag this tile into the scene.";
-  }, drop);
+  }, stage);
   for (const tile of document.querySelectorAll("[data-toy]")) {
     const toy = quickToys[tile.dataset.toy];
-    wireDragTile(tile, toy.icon, () => addObject(null, null, toy), (x, y) => addObject(null, { x, y }, toy));
+    wireDragTile(tile, toy.icon, () => addObject(null, null, toy), (x, y) => stageExtra(x, y, toy));
   }
   canvas.addEventListener("click", event => {
-    if (placing) drop(event.clientX, event.clientY);
+    if (placing) stage(event.clientX, event.clientY);
+  });
+  canvas.addEventListener("pointerdown", event => {
+    if (!stagedLaunch || event.button !== 0 || !event.isPrimary) return;
+    aimPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    canvas.setPointerCapture(event.pointerId);
+  });
+  function aim(event) {
+    if (aimPointer?.id !== event.pointerId || !stagedLaunch) return false;
+    const dx = event.clientX - aimPointer.x;
+    const dy = event.clientY - aimPointer.y;
+    if (Math.hypot(dx, dy) < 5) return false;
+    const circular = circularOrbitVelocity(body.radius + stagedLaunch.altitude, gm);
+    const angle = Math.atan2(-dy, dx) * 180 / Math.PI;
+    stagedLaunch.speed = Math.min(100000, circular * Math.min(3, Math.hypot(dx, dy) / 48));
+    stagedLaunch.heading = ((angle - stagedLaunch.position + 540) % 360) - 180;
+    updateStagedPrediction();
+    return true;
+  }
+  canvas.addEventListener("pointermove", aim);
+  canvas.addEventListener("pointerup", event => {
+    if (aimPointer?.id !== event.pointerId) return;
+    if (aim(event)) fireStagedLaunch();
+    else aimPointer = null;
+  });
+  canvas.addEventListener("lostpointercapture", () => { aimPointer = null; });
+  document.getElementById("fire-aimed").addEventListener("click", fireStagedLaunch);
+  document.getElementById("cancel-aimed").addEventListener("click", () => {
+    cancelStagedLaunch();
+    placementStatus.textContent = "";
   });
   document.addEventListener("keydown", event => {
-    if (event.key === "Escape" && placing) setPlacement(false);
+    if (event.key !== "Escape") return;
+    if (placing) setPlacement(false);
+    if (stagedLaunch) {
+      cancelStagedLaunch();
+      placementStatus.textContent = "";
+    }
   });
 }
 
 function wireControls() {
   wirePalette();
   wirePlacement();
+  collisionControl.addEventListener("change", syncCollisionControls);
+  collisionRewards.addEventListener("change", syncCollisionControls);
+  collisionDemo.addEventListener("click", () => {
+    if (isTransfer() || collisionControl.value === "off") return;
+    if (extraObjects.length > MAX_OBJECTS - 2) {
+      collisionFeedback.textContent = "Remove two objects or reset the scene to make room for the demo.";
+      return;
+    }
+    const demo = { icon: "🛰️", mass: 1000, radius: Math.max(0.00001, body.radius * 0.035), speed: 1 };
+    addObject(null, null, { ...demo, name: "Challenger A", position: -35, heading: 90 });
+    addObject(null, null, { ...demo, name: "Challenger B", position: 35, heading: -90 });
+  });
   spacetimeToggle.addEventListener("click", () => {
     spacetimeView.hidden = !spacetimeView.hidden;
     spacetimeToggle.textContent = spacetimeView.hidden ? "Show spacetime" : "Hide spacetime";
