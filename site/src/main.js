@@ -673,7 +673,7 @@ function drawPlanet(cx, cy, scale) {
   ctx.strokeStyle = outcome === "crash" ? "#ff5252" : "#4dd8e8";
   ctx.lineWidth = 2 / scale;
   ctx.beginPath();
-  ctx.arc(cx, cy, displayRadius, 0, Math.PI * 2);
+  ctx.arc(cx, cy, body.radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   if (["sandbox", "earth"].includes(profileId) && displayRadius * scale >= 22) {
@@ -757,6 +757,30 @@ function drawFlightIcon(icon, x, y, scale, size = 24) {
   ctx.restore();
 }
 
+function centralContact(point) {
+  const distance = Math.hypot(point.x, point.y);
+  if (!distance) return { x: body.radius, y: 0 };
+  const scale = body.radius / distance;
+  return { x: point.x * scale, y: point.y * scale };
+}
+
+function drawContactPreview(path, scale) {
+  if (path?.outcome !== "crash") return;
+  const center = path.points.at(-1);
+  if (!center) return;
+  const contact = centralContact(center);
+  ctx.save();
+  ctx.strokeStyle = "#ff7968";
+  ctx.lineWidth = 1 / scale;
+  ctx.setLineDash([3 / scale, 4 / scale]);
+  ctx.beginPath();
+  ctx.moveTo(center.x, center.y);
+  ctx.lineTo(contact.x, contact.y);
+  ctx.stroke();
+  ctx.restore();
+  drawMarker(contact, "Contact", "#ff7968", scale);
+}
+
 function drawExtraObjects(scale) {
   for (const object of extraObjects) {
     if (object.status.startsWith("Merged")) continue;
@@ -765,6 +789,7 @@ function drawExtraObjects(scale) {
       ctx.globalAlpha = 0.58;
       drawPrediction(0, 0, scale, object.prediction, object.color);
       ctx.globalAlpha = 1;
+      drawContactPreview(object.prediction, scale);
     }
     ctx.strokeStyle = object.color;
     ctx.fillStyle = object.color;
@@ -776,10 +801,17 @@ function drawExtraObjects(scale) {
     });
     ctx.stroke();
     ctx.beginPath();
-    const size = Math.min(100, Math.max(2, object.radius * scale)) / scale;
-    ctx.arc(object.x, object.y, size, 0, Math.PI * 2);
+    ctx.arc(object.x, object.y, object.radius, 0, Math.PI * 2);
+    ctx.globalAlpha = 0.26;
     ctx.fill();
-    if (object.icon) drawFlightIcon(object.status === "Central body impact" ? "💥" : object.icon, object.x, object.y, scale);
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+    if (object.status === "Central body impact") {
+      const contact = centralContact(object);
+      drawFlightIcon("💥", contact.x, contact.y, scale);
+    } else if (object.icon) {
+      drawFlightIcon(object.icon, object.x, object.y, scale);
+    }
     ctx.restore();
   }
 }
@@ -1333,6 +1365,14 @@ function drawStagedLaunch(scale) {
   if (!stagedLaunch) return;
   const { object, path, toy } = stagedLaunch;
   drawPrediction(0, 0, scale, path, "#fff1a3");
+  drawContactPreview(path, scale);
+  ctx.save();
+  ctx.strokeStyle = "#fff1a3";
+  ctx.lineWidth = 1 / scale;
+  ctx.beginPath();
+  ctx.arc(object.x, object.y, object.radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
   const circular = circularOrbitVelocity(body.radius + stagedLaunch.altitude, gm);
   const arrowScale = 48 / (circular * scale);
   const endX = object.x + object.vx * arrowScale;
