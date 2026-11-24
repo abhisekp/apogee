@@ -1,8 +1,8 @@
 # Apogee
 
-**▶ Live app — [Apogee](https://apogee.app.abhisekp.com/)** · **[Kids Mode](https://apogee.app.abhisekp.com/?mode=kids)**
+**▶ Live app — [Apogee](https://apogee.app.abhisekp.com/)**
 
-Kids Mode uses picture tiles and supports tapping or dragging toys into space. Orbit Lab includes trajectory comparison, a searchable 100-object catalog, and a live gravity grid. Use **Add object** to choose a body and place it on the canvas.
+Orbit Lab uses picture tiles for tap and drag launches, with orbit, impact, and escape challenges. It also includes trajectory comparison, a searchable 100-object catalog, and a live gravity grid. Use **Add object** to choose a body and place it on the canvas.
 
 **Original project demo — [apps.charliekrug.com/escape-velocity](https://apps.charliekrug.com/escape-velocity/)**
 

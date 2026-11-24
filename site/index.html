@@ -6,7 +6,7 @@
   <title>Apogee — orbital mechanics simulator you play in one drag</title>
   <meta
     name="description"
-    content="Explore gravity and orbits in Apogee. Launch satellites, compare trajectories, and play with picture-based drag and drop in Kids Mode."
+    content="Explore gravity and orbits in Apogee. Launch satellites, compare trajectories, and play with drag-and-drop flight challenges."
   />
   <meta property="og:title" content="Apogee — orbital mechanics simulator you play in one drag" />
   <meta
@@ -101,19 +101,6 @@
     </h1>
     <p class="tagline">drag a satellite off a tiny planet: crash, orbit, or escape</p>
   </header>
-  <div class="mode-picker"><wa-button id="kids-toggle" type="button" variant="brand" aria-controls="kids-space">🧒 Kids Mode</wa-button></div>
-  <section class="kids-space" id="kids-space" aria-label="Kids Mode" hidden>
-    <div class="kids-title"><h2>🚀 Space playground</h2><wa-button id="kids-clear" type="button" aria-label="Clear the playground">🧹 Clear</wa-button></div>
-    <p class="kids-hint">👆 Tap or drag a picture into space</p>
-    <div class="kids-tray" aria-label="Launch toys">
-      <wa-button type="button" data-toy="satellite" aria-label="Launch satellite"><span aria-hidden="true">🛰️</span></wa-button>
-      <wa-button type="button" data-toy="rocket" aria-label="Launch rocket"><span aria-hidden="true">🚀</span></wa-button>
-      <wa-button type="button" data-toy="rock" aria-label="Launch space rock"><span aria-hidden="true">🪨</span></wa-button>
-      <wa-button type="button" data-toy="ball" aria-label="Launch ball"><span aria-hidden="true">⚽</span></wa-button>
-    </div>
-    <div class="kids-sky"><canvas id="kids-canvas" aria-label="Space playground showing Earth and the paths of launched toys"></canvas></div>
-    <p id="kids-feedback" class="kids-feedback" role="status" aria-live="polite"></p>
-  </section>
   <main class="stage" id="advanced-space">
     <div class="scene-toolbar" aria-label="Scene controls">
       <wa-button id="open-catalog" type="button" appearance="outlined" size="small">Search objects <kbd>/</kbd></wa-button>
@@ -126,6 +113,20 @@
         <wa-button id="cancel-reset" type="button" size="small">Cancel</wa-button>
       </div>
     </div>
+    <section class="flight-game" aria-label="Flight challenges">
+      <div class="flight-tray" aria-label="Quick launch">
+        <wa-button type="button" data-toy="satellite" aria-label="Launch satellite"><span aria-hidden="true">🛰️</span> Satellite</wa-button>
+        <wa-button type="button" data-toy="rocket" aria-label="Launch rocket"><span aria-hidden="true">🚀</span> Rocket</wa-button>
+        <wa-button type="button" data-toy="rock" aria-label="Launch space rock"><span aria-hidden="true">🪨</span> Rock</wa-button>
+        <wa-button type="button" data-toy="ball" aria-label="Launch ball"><span aria-hidden="true">⚽</span> Ball</wa-button>
+      </div>
+      <p class="aim-help" id="flight-hint">Tap a tile to launch, or drag it into the scene to choose where it starts.</p>
+      <div class="flight-goals" aria-label="Flight goals">
+        <span id="goal-orbit">◯ Orbit</span><span id="goal-crash">◯ Impact</span><span id="goal-escape">◯ Escape</span>
+        <strong id="flight-score">🏆 0 points</strong>
+      </div>
+      <p id="flight-feedback" class="flight-feedback" role="status">Try all three flight goals.</p>
+    </section>
     <div class="scene-placement">
       <wa-button id="open-placement-catalog" type="button" size="small" variant="brand">＋ Add object</wa-button>
       <wa-button id="place-object" type="button" size="small" appearance="outlined" hidden>Drag into space</wa-button>

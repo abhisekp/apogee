@@ -3,7 +3,6 @@ import { bodies, transferDefaults, TRANSFER_STEP, moonPosition, stepTransfer, tr
 import { launchObject, MAX_OBJECTS, stepObjects } from "./objects.js";
 import { createWells, drawSpacetime } from "./spacetime.js";
 import { catalog, searchEntries } from "./catalog.js";
-import { wireKidsMode } from "./kids.js";
 import { aimedVelocity, projectTrajectory, SIM_DT } from "./projection.js";
 import { dragDistance, clampToMaxDistance, launchVelocity } from "./input.js";
 import { buildHudReadout } from "./hud.js";
@@ -139,7 +138,34 @@ function clearObjects() {
   refreshObjectList();
 }
 
-function addObject(event, drop) {
+const quickToys = {
+  satellite: { name: "Satellite", icon: "🛰️", mass: 1000, radius: 0.003, speed: 1, heading: 90 },
+  rocket: { name: "Rocket", icon: "🚀", mass: 20000, radius: 0.015, speed: 1.6, heading: 55 },
+  rock: { name: "Space rock", icon: "🪨", mass: 10000, radius: 0.008, speed: 0.25, heading: 160 },
+  ball: { name: "Ball", icon: "⚽", mass: 0.43, radius: 0.00011, speed: 1.12, heading: -90 },
+};
+const flightGoals = {
+  orbit: { icon: "🌀", label: "Orbit", points: 100 },
+  crash: { icon: "💥", label: "Impact", points: 25 },
+  escape: { icon: "⭐", label: "Escape", points: 50 },
+};
+const unlockedGoals = new Set();
+let flightScore = 0;
+
+function scoreFlight(kind) {
+  const goal = flightGoals[kind];
+  if (!goal) return;
+  flightScore += goal.points;
+  unlockedGoals.add(kind);
+  const badge = document.getElementById("goal-" + kind);
+  badge.textContent = `✓ ${goal.label}`;
+  badge.dataset.done = "";
+  document.getElementById("flight-score").textContent = `🏆 ${flightScore} points`;
+  document.getElementById("flight-feedback").textContent =
+    `${goal.icon} ${goal.label}! +${goal.points}${unlockedGoals.size === 3 ? " · All three flight goals complete!" : ""}`;
+}
+
+function addObject(event, drop, toy = null) {
   event?.preventDefault();
   if (isTransfer()) {
     objectStatus.textContent = "Select a single central body to add objects.";
@@ -154,6 +180,14 @@ function addObject(event, drop) {
     const value = objectField(key).value;
     return value === "" || value == null ? NaN : Number(value);
   });
+  if (toy) {
+    mass = toy.mass;
+    radius = toy.radius;
+    altitude = Math.max(body.altitude, radius * 1.2);
+    position = (nextObjectId * 53) % 360;
+    heading = toy.heading;
+    speed = circularOrbitVelocity(body.radius + altitude, gm) * toy.speed;
+  }
   if (drop && Number.isFinite(radius) && radius > 0) {
     const { left, top, width, height } = canvas.getBoundingClientRect();
     const scale = viewScale(width, height);
@@ -161,8 +195,8 @@ function addObject(event, drop) {
     const y = (drop.y - top - height / 2 - cameraY) / scale;
     position = Math.atan2(-y, x) * 180 / Math.PI;
     altitude = Math.max(radius + Math.max(body.radius * 0.1, 1e-6), Math.hypot(x, y) - body.radius);
-    speed = circularOrbitVelocity(body.radius + altitude, gm);
-    heading = 90;
+    speed = circularOrbitVelocity(body.radius + altitude, gm) * (toy?.speed ?? 1);
+    heading = toy?.heading ?? 90;
   }
   if (![mass, radius, altitude, speed, position, heading].every(Number.isFinite) ||
       mass < 1e-18 || mass > 1e33 || radius < 1e-9 || radius > 1e7 ||
@@ -172,17 +206,24 @@ function addObject(event, drop) {
   }
 
   const id = nextObjectId++;
-  const name = objectField("name").value?.trim().slice(0, 28) || `Object ${id}`;
+  const name = toy ? `${toy.name} ${id}` : objectField("name").value?.trim().slice(0, 28) || `Object ${id}`;
   const object = launchObject({ id, name, mass, radius, distance: body.radius + altitude, speed, position, heading, time: objectTime });
+  object.icon = toy?.icon;
   object.color = objectColors[(id - 1) % objectColors.length];
   object.trail = [{ x: object.x, y: object.y }];
   extraObjects.push(object);
-  objectField("name").value = "";
-  objectField("position").value = (position + 45 + 360) % 360;
+  if (!toy) {
+    objectField("name").value = "";
+    objectField("position").value = (position + 45 + 360) % 360;
+  } else {
+    document.getElementById("flight-feedback").textContent = `${toy.icon} ${toy.name} launched!`;
+  }
   objectStatus.textContent = `${name} added.`;
-  if (drop) placementStatus.textContent = `${name} placed in orbit.`;
-  placeObject.hidden = true;
-  setPlacement(false);
+  if (drop && !toy) placementStatus.textContent = `${name} placed in orbit.`;
+  if (!toy) {
+    placeObject.hidden = true;
+    setPlacement(false);
+  }
   refreshObjectList();
   setPhase(phase);
   setFitPath(true);
@@ -203,6 +244,12 @@ function advanceObjects(dt) {
   if (advanced) {
     extraObjects.forEach((object, i) => {
       if (statuses[i] !== "Flying") return;
+      if (object.status === "Central body impact") scoreFlight("crash");
+      if (object.status === "Escaped") scoreFlight("escape");
+      if (object.status === "Flying" && !object.orbitScored && Math.abs(object.turn ?? 0) >= 2 * Math.PI) {
+        object.orbitScored = true;
+        scoreFlight("orbit");
+      }
       object.trail.push({ x: object.x, y: object.y });
       if (object.trail.length > 420) object.trail.shift();
     });
@@ -464,6 +511,7 @@ function triggerShake() {
 }
 
 function resolveOutcome(kind) {
+  scoreFlight(kind === "moon-impact" ? "crash" : kind);
   outcome = kind;
   pushTracePoint(satellite.x, satellite.y);
   setPhase("resolved");
@@ -601,6 +649,9 @@ function drawPlanet(cx, cy, scale) {
   ctx.arc(cx, cy, displayRadius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
+  if (["sandbox", "earth"].includes(profileId) && displayRadius * scale >= 22) {
+    drawFlightIcon("🌍", cx, cy, scale, Math.min(78, displayRadius * scale * 1.65));
+  }
 }
 
 function drawTrace(cx, cy, scale) {
@@ -668,6 +719,17 @@ function drawOverlays(scale) {
   }
 }
 
+function drawFlightIcon(icon, x, y, scale, size = 24) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1 / scale, 1 / scale);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${size}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+  ctx.fillText(icon, 0, 0);
+  ctx.restore();
+}
+
 function drawExtraObjects(scale) {
   for (const object of extraObjects) {
     if (object.status.startsWith("Merged")) continue;
@@ -685,6 +747,7 @@ function drawExtraObjects(scale) {
     const size = Math.min(100, Math.max(2, object.radius * scale)) / scale;
     ctx.arc(object.x, object.y, size, 0, Math.PI * 2);
     ctx.fill();
+    if (object.icon) drawFlightIcon(object.status === "Central body impact" ? "💥" : object.icon, object.x, object.y, scale);
     ctx.restore();
   }
 }
@@ -762,11 +825,6 @@ function render() {
 }
 
 function frame(timestamp) {
-  if (document.body.hasAttribute("data-kids")) {
-    lastFrameTime = null;
-    requestAnimationFrame(frame);
-    return;
-  }
   if (lastFrameTime === null) lastFrameTime = timestamp;
   const rawDt = Math.min(MAX_FRAME_DT, (timestamp - lastFrameTime) / 1000);
   lastFrameTime = timestamp;
@@ -889,6 +947,10 @@ function loadProfile(id, override) {
   gm = body.gm;
   if (oldId !== id || oldGM !== gm || oldRadius !== body.radius) clearObjects();
   objectForm.querySelector("[type=submit]").disabled = isTransfer();
+  for (const tile of document.querySelectorAll("[data-toy]")) tile.disabled = isTransfer();
+  document.getElementById("flight-hint").textContent = isTransfer()
+    ? "Use Launch for an Earth–Moon transfer. Quick launch tiles are available with a single central body."
+    : "Tap a tile to launch, or drag it into the scene to choose where it starts.";
   if (isTransfer()) objectStatus.textContent = "Select a single central body to add objects.";
   controls["body-profile"].value = id;
   controls["transfer-fields"].hidden = !isTransfer();
@@ -1089,7 +1151,7 @@ function wirePalette() {
     }
   });
   document.addEventListener("keydown", event => {
-    if (document.body.hasAttribute("data-kids") || event.defaultPrevented || event.repeat || event.altKey || event.isComposing) return;
+    if (event.defaultPrevented || event.repeat || event.altKey || event.isComposing) return;
     const modified = event.ctrlKey || event.metaKey;
     const target = event.composedPath()[0];
     const editing = target?.isContentEditable || target?.matches?.("input, textarea, select, wa-input, wa-number-input");
@@ -1109,58 +1171,65 @@ function setPlacement(active) {
   placeObject.setAttribute("aria-pressed", String(active));
 }
 
-function wirePlacement() {
-  let dragStart = null;
+function wireDragTile(button, icon, tap, drop) {
+  let start = null;
   let ghost = null;
-  let suppressClick = false;
-
-  function cleanDrag() {
-    dragStart = null;
+  let dragged = false;
+  function cleanup() {
+    start = null;
     ghost?.remove();
     ghost = null;
   }
+  button.addEventListener("click", event => {
+    if (!dragged || event.detail === 0) tap();
+  });
+  button.addEventListener("pointerdown", event => {
+    if (event.button !== 0 || !event.isPrimary || button.disabled) return;
+    dragged = false;
+    start = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    button.setPointerCapture(event.pointerId);
+  });
+  button.addEventListener("pointermove", event => {
+    if (start?.id !== event.pointerId) return;
+    if (!ghost && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+      dragged = true;
+      ghost = document.createElement("span");
+      ghost.className = "flight-ghost";
+      ghost.setAttribute("aria-hidden", "true");
+      ghost.textContent = icon;
+      document.body.append(ghost);
+    }
+    if (ghost) {
+      ghost.style.left = `${event.clientX}px`;
+      ghost.style.top = `${event.clientY}px`;
+    }
+  });
+  button.addEventListener("pointerup", event => {
+    if (start?.id !== event.pointerId) return;
+    if (dragged) {
+      const { left, right, top, bottom } = canvas.getBoundingClientRect();
+      const { clientX: x, clientY: y } = event;
+      if (x >= left && x <= right && y >= top && y <= bottom) drop(x, y);
+    }
+    cleanup();
+  });
+  button.addEventListener("pointercancel", cleanup);
+  button.addEventListener("lostpointercapture", cleanup);
+}
 
+function wirePlacement() {
   function drop(x, y) {
     setPlacement(false);
     addObject(null, { x, y });
   }
-
-  placeObject.addEventListener("click", event => {
-    if (suppressClick && event.detail) return;
+  wireDragTile(placeObject, "🪐", () => {
     setPlacement(!placing);
     placementStatus.textContent = placing ? "Click the scene to place the object." : "Drag this tile into the scene.";
-  });
-  placeObject.addEventListener("pointerdown", event => {
-    if (event.button !== 0 || !event.isPrimary) return;
-    suppressClick = false;
-    dragStart = { x: event.clientX, y: event.clientY, id: event.pointerId };
-    placeObject.setPointerCapture(event.pointerId);
-  });
-  placeObject.addEventListener("pointermove", event => {
-    if (dragStart?.id !== event.pointerId) return;
-    if (!ghost && Math.hypot(event.clientX - dragStart.x, event.clientY - dragStart.y) > 8) {
-      ghost = document.createElement("span");
-      ghost.className = "kids-ghost";
-      ghost.textContent = "🪐";
-      ghost.setAttribute("aria-hidden", "true");
-      document.body.append(ghost);
-    }
-    if (!ghost) return;
-    ghost.style.left = `${event.clientX}px`;
-    ghost.style.top = `${event.clientY}px`;
-  });
-  placeObject.addEventListener("pointerup", event => {
-    if (dragStart?.id !== event.pointerId) return;
-    if (ghost) {
-      suppressClick = true;
-      const rect = canvas.getBoundingClientRect();
-      const x = event.clientX, y = event.clientY;
-      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) drop(x, y);
-    }
-    cleanDrag();
-  });
-  placeObject.addEventListener("pointercancel", cleanDrag);
-  placeObject.addEventListener("lostpointercapture", cleanDrag);
+  }, drop);
+  for (const tile of document.querySelectorAll("[data-toy]")) {
+    const toy = quickToys[tile.dataset.toy];
+    wireDragTile(tile, toy.icon, () => addObject(null, null, toy), (x, y) => addObject(null, { x, y }, toy));
+  }
   canvas.addEventListener("click", event => {
     if (placing) drop(event.clientX, event.clientY);
   });
@@ -1313,4 +1382,3 @@ updateMuteButton();
 resetScene();
 requestAnimationFrame(frame);
 
-wireKidsMode();

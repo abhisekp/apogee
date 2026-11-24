@@ -46,6 +46,8 @@ export function stepObjects(objects, dt, { body, boundary }) {
   for (const object of active) {
     if (object.status !== "Flying") continue;
     const state = stepSimulation(object, dt, body.gm);
+    const turn = Math.atan2(object.x * state.y - object.y * state.x, object.x * state.x + object.y * state.y);
+    object.turn = (object.turn ?? 0) + turn;
     Object.assign(object, state);
     object.time += dt;
     const distance = Math.hypot(object.x, object.y);
